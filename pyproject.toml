@@ -10,6 +10,7 @@ dependencies = [
     "joblib>=1.6.0",
     "pandera>=0.36.0",
     "scikit-learn>=1.9.1",
+    "mlflow>=3.18.0",
 ]
 
 [build-system]

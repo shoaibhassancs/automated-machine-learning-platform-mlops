@@ -92,7 +92,8 @@ A package is `data/models/<id>/` (git-ignored), id `m-YYYYMMDDTHHMMSSZ-xxxxxxxx`
    its predictions compared with the saved reference. Failure removes the staging folder. Success
    moves it into place with one atomic rename. State **open**: files read-only, folder writable.
 2. *Attempt.* `attempt.json` is created exclusively (`open(..., "x")`) **before any test row is read**.
-   A second attempt fails. State **spent**.
+   A second attempt fails, including one made by another process at the same moment (tested with two
+   real processes; this relies on the local filesystem honouring exclusive create). State **spent**.
 3. *Result.* `test_result.json` is created exclusively and cannot be overwritten.
 4. *Seal.* `seal.json` is written, every file and the folder become read-only. State **sealed**.
 
@@ -119,3 +120,4 @@ claimed to be byte-identical between runs.
 ## Measurements
 
 See the Chunk 2B entry in `DECISIONS.md` (D-021) for the measured time, memory and package sizes.
+Logging a finalized job to MLflow (`finalize --track`, `track-package`) is described in `tracking.md`.

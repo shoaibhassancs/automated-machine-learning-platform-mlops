@@ -22,23 +22,27 @@ validation: 4A, and 4B the Pandera feature schema), 5 (task configuration) and 6
 are done and verified, and **Gate 1 is closed** (owner-approved 2026-11-13). **Chunk 2A (Steps 7, 8,
 10 and 9: preprocessing pipeline, algorithm catalogue, metrics, split and cross-validation) is done
 and verified (owner-approved complete)**. **Chunk 2B (Steps 11-12: selection, the single final test,
-model packaging) is implemented and verified and awaits the owner's Gate 2 review**; the model
-registry and everything after it is not started. See `DECISIONS.md` and `BUILD_LOG.md`. Runtime
-dependencies: pandas, numpy, pandera, scikit-learn, joblib. Dev: pytest, ruff, mypy, pandas-stubs.
+model packaging) is done and verified**, and **Gate 2 is closed** (owner-approved, including the
+two-process concurrent-finalization check, D-022). **Chunk 3A (Steps 13-14: MLflow setup and
+logging of training runs through `tracking.py`) is done and verified, and Gate 3A is closed** (owner-approved; no further changes to 3A). **Chunk 3B (Steps 15-16: experiment history and CV-only comparison, and the read-only reproducibility check) is implemented and verified and awaits the owner's Gate 3 review**; the model registry and everything after it are not started. See `DECISIONS.md` and `BUILD_LOG.md`. Runtime dependencies: pandas, numpy, pandera,
+scikit-learn, joblib, mlflow. Dev: pytest, ruff, mypy, pandas-stubs.
 Code: `demo_data.py` (Step 2), `ingest.py` and `dataset_store.py` (Step 3), `profile.py` and
 `validate.py` (4A), `task.py` (5), `explore.py` (6), `schema.py` (4B), `pipeline.py` (7),
 `algorithms.py` (8), `evaluate.py` (10), `train.py` (9), `selection.py` and `finalize.py` (11),
-`package.py` (12), `hashing.py`, and the scripts `prepare_demo_data.py` and `datasets.py`. Demo data (UCI Adult and Abalone, CC BY 4.0) is prepared by
+`package.py` (12), `tracking.py` (13-14, plus the 3B read side; the only module that imports `mlflow`), `compare.py` and `reproduce.py` (15-16, no MLflow), `hashing.py`, and
+the scripts `prepare_demo_data.py`, `datasets.py`, `mlflow_smoke.py` and `mlflow_ui.py`. Demo data (UCI Adult and Abalone, CC BY 4.0) is prepared by
 `make demo-data` into git-ignored `data/`; see `docs/data.md`. Dataset versions live in git-ignored
 `data/store/` (`docs/ingestion.md`); profile, validate, task, explore and schema results are computed
 on demand and never stored (`docs/profiling.md`, `docs/task-config.md`, `docs/exploration.md`,
 `docs/schema.md`); `train` is cross-validation only and never reads the held-out test part
 (`docs/training.md`); only `finalize` reads it, once per package, for the selected model, after the
 frozen selection is verified and the attempt marker exists (`docs/selection-and-packaging.md`). Model
-packages live in git-ignored `data/models/`; only sealed packages load. scikit-learn has no type information, so mypy has a narrow override for
+packages live in git-ignored `data/models/`; only sealed packages load. Tracking (`--track`,
+`track-package`, `docs/tracking.md`) logs to a git-ignored SQLite + local-artifact MLflow store in
+`data/mlflow/`, only after a package is sealed; it is resumable and never touches test rows. `jobs`, `job`, `compare` and `reproduce` (`docs/reproducibility.md`) are read-only: `compare` uses CV numbers only; `reproduce` re-runs CV from the record, never reads or scores the test part and writes nothing. scikit-learn has no type information, so mypy has a narrow override for
 `sklearn.*` only. Native thread pools are capped at 2 in `automl_ops/__init__.py`. Next planned work
-(Phase 3, MLflow) needs the owner's Gate 2 approval and a proposal first. The cross-job test-set
-reuse policy is **still an open decision**.
+(Phase 4) needs the owner's approval and a proposal first. The cross-job test-set reuse policy is
+**still an open decision**.
 
 ## Working process (approval gates)
 Work in **chunks**: a phase, or a group of steps, sized by where the owner's input is needed.
@@ -90,6 +94,7 @@ Work in **chunks**: a phase, or a group of steps, sized by where the owner's inp
   Docker builds, large runs). Do not delete anything to free space; tell the owner what is reclaimable.
 - Keep code compatible with Linux and macOS; give a fallback for any platform-specific command.
 - One implementation per capability, shared by every entry point (API, worker, serving, scripts).
+- Only `automl_ops/tracking.py` imports `mlflow` (a test enforces it); nothing MLflow-typed crosses it.
 
 ## Project rules to keep
 - **Sealed test set.** Regular runs record cross-validation results only. A job's test part is read
@@ -142,6 +147,11 @@ Work in **chunks**: a phase, or a group of steps, sized by where the owner's inp
   manages dataset versions (default store `data/store/`). Versions are immutable and read-only; never
   edit or replace a stored file. All commands except `ingest` read a version and change nothing.
   `train` cross-validates on a training part only; it never reads the held-out test part.
+  `train|finalize --track` and `track-package` log to MLflow (`--mlflow-dir`, default `data/mlflow`);
+  `scripts/mlflow_ui.py` starts the UI on 127.0.0.1:5001 by hand. MLflow telemetry stays disabled
+  (`MLFLOW_DISABLE_TELEMETRY=true`, set by `tracking.py` and `mlflow_ui.py`).
+  `jobs|job|compare|reproduce` (Steps 15-16) read the MLflow records; `reproduce` exits 0 reproduced, 1 not
+  reproduced, 2 cannot run, and never reads the held-out test part.
 - Data-reading policy: cells are read as text; only an empty cell is missing; NA-like text and
   values with leading zeros (`007`) keep their original text and are reported, never converted.
   Task-suitability checks (task type, class sizes) live in `task.py` (Step 5), not in profile/validate.

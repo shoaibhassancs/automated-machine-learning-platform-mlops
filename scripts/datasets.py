@@ -12,11 +12,17 @@
     uv run python scripts/datasets.py schema NAME@vN --target COLUMN [--task T] [--exclude A,B]
         [--check OTHER@vN] [--json]
     uv run python scripts/datasets.py train NAME@vN --target COLUMN [--task T] [--exclude A,B]
-        [--algorithms a,b] [--folds 5] [--seed 42] [--test-fraction 0.2] [--json]
+        [--algorithms a,b] [--folds 5] [--seed 42] [--test-fraction 0.2] [--track] [--json]
     uv run python scripts/datasets.py finalize NAME@vN --target COLUMN [--task T] [--exclude A,B]
         [--algorithms a,b] [--folds 5] [--seed 42] [--test-fraction 0.2]
-        [--selection-metric M] --confirm [--json]
+        [--selection-metric M] --confirm [--track] [--json]
     uv run python scripts/datasets.py package-verify [PACKAGE_ID] [--json]
+    uv run python scripts/datasets.py track-package PACKAGE_ID [--json]
+    uv run python scripts/datasets.py jobs [--kind K] [--task T] [--dataset REF] [--algorithm A]
+        [--state S] [--limit N] [--json]
+    uv run python scripts/datasets.py job JOB_KEY [--json]
+    uv run python scripts/datasets.py compare JOB_KEY JOB_KEY... [--metric M] [--json]
+    uv run python scripts/datasets.py reproduce JOB_KEY [--tolerance X] [--json]
 
 `profile`, `validate`, `task`, `explore` and `schema` (Steps 4-6) compute their reports on demand
 from the stored version and never change it. Exit codes: 0 ok, 1 validation errors / verify failure
@@ -27,6 +33,15 @@ selects the best algorithm from the cross-validation results alone, freezes that
 on the training part, scores it **once** on the held-out test part and writes a sealed model package
 under `data/models/` (`--models`); it refuses to run without `--confirm`, and exit code 2 also
 covers a refused or failed finalization. `package-verify` re-checks packages (exit 1 if any fails).
+`--track` (Steps 13-14) logs the job to the local MLflow store (`data/mlflow`, `--mlflow-dir`)
+through `automl_ops.tracking`: after the package is sealed for `finalize`, from the
+cross-validation results for `train`. If tracking fails the package stays sealed and the exit code
+is 3 ("tracking pending"); `track-package` then logs, or finishes logging, a sealed package without
+retraining or reading any test row. See docs/tracking.md.
+`jobs`, `job` and `compare` (Step 15) read the MLflow records and change nothing; `compare` uses
+cross-validation numbers only. `reproduce` (Step 16) re-runs a job's cross-validation from its
+record and compares; it never reads the held-out test part and writes nothing (exit 0 reproduced,
+1 not reproduced, 2 cannot run). See docs/reproducibility.md.
 
 The store lives in data/store/ by default (git-ignored). The CLI and, later, the web API both use
 `automl_ops.dataset_store`; this script contains no storage logic of its own.
@@ -37,12 +52,14 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
 from automl_ops.algorithms import AlgorithmError, algorithms_for
+from automl_ops.compare import CompareError, compare_jobs
 from automl_ops.dataset_store import DatasetStoreError, FileDatasetStore
 from automl_ops.explore import explore_frame
 from automl_ops.finalize import DatasetInfo, FinalizeError, finalize
@@ -50,6 +67,7 @@ from automl_ops.ingest import IngestError, read_limited
 from automl_ops.package import (
     PackageError,
     leftover_staging,
+    library_versions,
     list_packages,
     verify_package,
 )
@@ -62,6 +80,14 @@ from automl_ops.profile import (
     profile_version,
     read_version_bytes,
     read_version_frame,
+)
+from automl_ops.reproduce import (
+    DEFAULT_REL_TOLERANCE,
+    ReproductionError,
+    ReproductionReport,
+    reproduce_job,
+    sealed_manifest_selection_sha,
+    sealed_test_result,
 )
 from automl_ops.schema import (
     SchemaError,
@@ -78,6 +104,18 @@ from automl_ops.task import (
     check_task_config,
     class_counts,
     suggest_task,
+)
+from automl_ops.tracking import (
+    AlreadyTrackedError,
+    JobRecord,
+    TrackedJob,
+    TrackingError,
+    TrackingStore,
+    list_jobs,
+    log_job,
+    read_job,
+    record_from_package,
+    record_from_training,
 )
 from automl_ops.train import (
     AlgorithmRequest,
@@ -416,6 +454,43 @@ def _print_training(result: TrainingResult, ref: str) -> None:
     )
 
 
+EXIT_TRACKING_PENDING = 3
+
+
+def _track(record: JobRecord, args: argparse.Namespace) -> tuple[TrackedJob | None, str | None]:
+    """Log a record; returns (tracked job, None) or (None, the reason it is pending)."""
+    try:
+        return log_job(record, TrackingStore(args.mlflow_dir)), None
+    except TrackingError as error:
+        return None, str(error)
+
+
+def _tracking_payload(tracked: TrackedJob | None, problem: str | None) -> dict[str, Any]:
+    if tracked is None:
+        return {"state": "pending", "problem": problem}
+    return {
+        "state": "complete",
+        "job_key": tracked.job_key,
+        "parent_run_id": tracked.parent_run_id,
+        "child_run_ids": tracked.child_run_ids,
+        "resumed": tracked.resumed,
+    }
+
+
+def _print_tracking(
+    tracked: TrackedJob | None, problem: str | None, args: argparse.Namespace
+) -> None:
+    store = TrackingStore(args.mlflow_dir)
+    if tracked is None:
+        print(f"\nTRACKING PENDING: {problem}", file=sys.stderr)
+        return
+    verb = "resumed and completed" if tracked.resumed else "logged"
+    print(
+        f"\ntracking: {verb} job {tracked.job_key} ({len(tracked.child_run_ids)} algorithm "
+        f"runs) in {store.db_path}"
+    )
+
+
 def cmd_train(store: FileDatasetStore, args: argparse.Namespace) -> int:
     version, frame = read_version_frame(store, args.ref)
     config = _task_config(profile_frame(frame), args)
@@ -432,11 +507,27 @@ def cmd_train(store: FileDatasetStore, args: argparse.Namespace) -> int:
         settings,
         progress=None if args.json else _print_progress,
     )
+    tracked, problem = (
+        _track(
+            record_from_training(
+                result.to_dict(), DatasetInfo.from_version(version).to_dict(), library_versions()
+            ),
+            args,
+        )
+        if args.track
+        else (None, None)
+    )
     if args.json:
         payload = {"dataset_ref": version.ref, "sha256": version.sha256, **result.to_dict()}
+        if args.track:
+            payload["tracking"] = _tracking_payload(tracked, problem)
         print(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False))
     else:
         _print_training(result, version.ref)
+        if args.track:
+            _print_tracking(tracked, problem, args)
+    if args.track and tracked is None:
+        return EXIT_TRACKING_PENDING
     return 0 if result.ok else 1
 
 
@@ -501,6 +592,13 @@ def cmd_finalize(store: FileDatasetStore, args: argparse.Namespace) -> int:
         args.models,
         confirm_final_test=True,
     )
+    tracked, problem = (None, None)
+    if args.track:
+        # Only after the package is sealed: tracking can never change or spend a package.
+        try:
+            tracked, problem = _track(record_from_package(args.models, result.package_id), args)
+        except TrackingError as error:
+            problem = str(error)
     if args.json:
         payload = {
             "dataset_ref": version.ref,
@@ -510,11 +608,247 @@ def cmd_finalize(store: FileDatasetStore, args: argparse.Namespace) -> int:
             "selection_sha256": frozen.sha256,
             "test_result": result.test_result,
         }
+        if args.track:
+            payload["tracking"] = _tracking_payload(tracked, problem)
         print(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False))
     else:
         _print_training(training, version.ref)
         _print_finalize(report.to_dict(), result, training)
+        if args.track:
+            _print_tracking(tracked, problem, args)
+            if tracked is None:
+                print(
+                    f"The package is sealed and unaffected. Retry with: "
+                    f"scripts/datasets.py track-package {result.package_id}",
+                    file=sys.stderr,
+                )
+    if args.track and tracked is None:
+        return EXIT_TRACKING_PENDING
     return 0
+
+
+def cmd_track_package(store: FileDatasetStore, args: argparse.Namespace) -> int:
+    """Log, or finish logging, a sealed package. Reads only the package's manifest and test result
+    (JSON): no retraining, no data rows, no unpickling."""
+    record = record_from_package(args.models, args.package_id)
+    try:
+        tracked = log_job(record, TrackingStore(args.mlflow_dir))
+    except AlreadyTrackedError as error:
+        raise CliError(str(error)) from error
+    except TrackingError as error:
+        print(f"TRACKING PENDING: {error}", file=sys.stderr)
+        return EXIT_TRACKING_PENDING
+    if args.json:
+        print(json.dumps(_tracking_payload(tracked, None), indent=2, sort_keys=True))
+    else:
+        _print_tracking(tracked, None, args)
+    return 0
+
+
+def _when(ms: int) -> str:
+    return datetime.fromtimestamp(ms / 1000, UTC).strftime("%Y-%m-%d %H:%M")
+
+
+def _num(value: Any, digits: int = 4) -> str:
+    return "-" if value is None else f"{float(value):.{digits}f}"
+
+
+def cmd_jobs(store: FileDatasetStore, args: argparse.Namespace) -> int:
+    """History of tracked jobs, newest first. Read-only."""
+    jobs = list_jobs(
+        TrackingStore(args.mlflow_dir),
+        kind=args.kind,
+        task=args.task,
+        dataset=args.dataset,
+        algorithm=args.algorithm,
+        state=args.state,
+        limit=args.limit,
+    )
+    if args.json:
+        print(json.dumps([j.to_dict() for j in jobs], indent=2, sort_keys=True))
+        return 0
+    if not jobs:
+        print("no tracked jobs match")
+        return 0
+    print(
+        f"{'job':<30} {'kind':<5} {'state':<10} {'started (UTC)':<16} {'dataset':<24} "
+        f"{'seed':>5} {'folds':>5} {'selected / CV score':<32} {'ok/failed':>9} test"
+    )
+    for j in jobs:
+        picked = (
+            f"{j.selected_algorithm} {j.selection_metric}={_num(j.selected_cv_mean)}"
+            if j.selected_algorithm
+            else "- (cv only)"
+        )
+        print(
+            f"{j.job_key:<30} {j.kind:<5} {j.state:<10} {_when(j.start_ms):<16} "
+            f"{str(j.dataset_ref):<24} {str(j.seed):>5} {str(j.folds_used):>5} {picked:<32} "
+            f"{j.algorithms_ok:>4}/{j.algorithms_failed:<4} "
+            f"{'recorded' if j.has_test_result else '-'}"
+        )
+    return 0
+
+
+def cmd_job(store: FileDatasetStore, args: argparse.Namespace) -> int:
+    """One job's full record. The recorded test result (finalized jobs only) is shown here, with
+    its limitation text, and nowhere else."""
+    job = read_job(args.job_key, TrackingStore(args.mlflow_dir))
+    if args.json:
+        payload = {
+            "job_key": job.job_key,
+            "state": job.state,
+            "kind": job.kind,
+            "tags": job.tags,
+            "params": job.params,
+            "metrics": job.metrics,
+            "dataset": job.dataset,
+            "libraries": job.libraries,
+            "training": job.training,
+            "selection": job.selection,
+            "algorithms": {
+                k: {
+                    "run_status": a.run_status,
+                    "tags": a.tags,
+                    "params": a.params,
+                    "metrics": a.metrics,
+                    "fold_metrics": a.fold_metrics,
+                    "test_result": a.test_result,
+                }
+                for k, a in job.algorithms.items()
+            },
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    t = job.training
+    print(f"job {job.job_key}  [{job.kind}, {job.state}]  started {_when(job.start_ms)} UTC")
+    print(
+        f"dataset {job.tags.get('platform.dataset_ref')}  "
+        f"sha256 {job.tags.get('platform.dataset_sha256')}"
+    )
+    print(f"task {t['task']}, target {t['target']}, seed {job.tags.get('platform.seed')}, "
+          f"folds {job.params.get('folds_used')} of {job.params.get('folds')} requested, "
+          f"test fraction {job.params.get('test_fraction')}")  # fmt: skip
+    print("libraries: " + ", ".join(f"{k} {v}" for k, v in sorted(job.libraries.items())))
+    metric = job.tags.get("platform.selection_metric")
+    print(
+        f"\nCross-validation on the training part "
+        f"({'selection metric ' + metric if metric else 'cv only'}):"
+    )
+    for r in t["results"]:
+        if r["status"] != "ok":
+            err = r.get("error") or {}
+            print(f"  {r['algorithm']:<22} FAILED  {err.get('type')}: {err.get('message')}")
+            continue
+        parts = []
+        for name, entry in sorted(r["summary"].items()):
+            if entry.get("mean") is not None:
+                parts.append(f"{name} {_num(entry['mean'])}+-{_num(entry.get('std'))}")
+        mark = " *" if r["algorithm"] == job.tags.get("platform.selected_algorithm") else ""
+        print(f"  {r['algorithm']:<22}{mark:<2} " + "  ".join(parts[:4]))
+    if job.selection:
+        print(
+            f"\nselected: {job.selection['selected']['algorithm']} - "
+            f"{job.selection.get('explanation', '')}"
+        )
+    for a in job.algorithms.values():
+        if a.test_result is not None:
+            ev = a.test_result.get("evaluation", {}).get("metrics", {})
+            print("\nRecorded single test result (selected model, read once, not used for any "
+                  "choice):")  # fmt: skip
+            print(
+                "  " + "  ".join(f"{k} {_num(v)}" for k, v in sorted(ev.items()) if v is not None)
+            )
+            if a.test_result.get("limitation"):
+                print(f"  limitation: {a.test_result['limitation']}")
+    return 0
+
+
+def cmd_compare(store: FileDatasetStore, args: argparse.Namespace) -> int:
+    """Cross-validation comparison of two or more jobs. Read-only; no test result is used."""
+    tracking = TrackingStore(args.mlflow_dir)
+    try:
+        result = compare_jobs([read_job(k, tracking) for k in args.job_keys], args.metric)
+    except CompareError as error:
+        raise CliError(str(error)) from error
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
+    print(f"{result['task']} / {result['target']}: {result['metric']} "
+          f"({result['direction']} is better), {result['basis']}")  # fmt: skip
+    if result["split_note"]:
+        print(f"NOTE: {result['split_note']}")
+    print(
+        f"\n{'rank':>4}  {'job':<30} {'algorithm':<22} {'cv mean':>10} {'cv std':>9} "
+        f"{'pooled':>9}  status"
+    )
+    for r in result["rows"]:
+        flag = " (selected in job)" if r["selected_in_job"] else ""
+        status = r["status"] if r["error"] is None else f"{r['status']} ({r['error']})"
+        print(
+            f"{str(r['rank'] or '-'):>4}  {r['job_key']:<30} {r['algorithm']:<22} "
+            f"{_num(r['cv_mean']):>10} {_num(r['cv_std']):>9} {_num(r['oof']):>9}  "
+            f"{status}{flag}"
+        )
+    for name, params in result["parameter_differences"].items():
+        print(f"parameters differ for {name}: {', '.join(params)}")
+    if result["library_differences"]:
+        print("library versions differ: " + ", ".join(result["library_differences"]))
+    return 0
+
+
+def _print_report(report: ReproductionReport) -> None:
+    print(f"\n{report.verdict}  ({report.job_key}, {report.kind})")
+    for item in report.items:
+        mark = {"pass": "PASS", "fail": "FAIL", "skipped": "SKIP"}[item.status]
+        print(f"  {mark}  {item.name}: {item.detail}")
+        for line in item.mismatches[:8]:
+            print(f"        {line}")
+        if len(item.mismatches) > 8:
+            print(f"        ... and {len(item.mismatches) - 8} more")
+    tol = report.tolerance
+    print(f"\ntolerance: |difference| <= {tol['absolute']:g} + {tol['relative']:g} x |logged|; "
+          f"largest difference {report.max_deviation:.3g}; "
+          f"{'bit-identical' if report.bit_identical else 'not bit-identical'}")  # fmt: skip
+    if report.environment_same:
+        print("environment: library versions equal to those logged")
+    else:
+        print("environment differs from the logged one:")
+        for line in report.environment_differences:
+            print(f"  {line}")
+    print(f"scope: {report.scope}")
+
+
+def cmd_reproduce(store: FileDatasetStore, args: argparse.Namespace) -> int:
+    """Re-run a tracked job's cross-validation from its record and compare. Writes nothing and
+    never reads the held-out test part. Exit 0 reproduced, 1 not reproduced, 2 cannot run."""
+    job = read_job(args.job_key, TrackingStore(args.mlflow_dir))
+    ref = job.dataset.get("ref")
+    if not ref:
+        raise CliError("the job record names no dataset version")
+    version, frame = read_version_frame(store, str(ref))  # verifies the stored file's SHA-256
+    package_test = package_sha = None
+    checked = False
+    package_id = job.tags.get("platform.package_id")
+    if job.kind == "final" and package_id and (args.models / package_id).is_dir():
+        package_test = sealed_test_result(args.models, package_id)
+        package_sha = sealed_manifest_selection_sha(args.models, package_id)
+        checked = True
+    report = reproduce_job(
+        job,
+        frame,
+        version.sha256,
+        library_versions(),
+        package_test_result=package_test,
+        package_selection_sha256=package_sha,
+        package_checked=checked,
+        rel_tolerance=args.tolerance,
+        progress=None if args.json else _print_progress,
+    )
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    else:
+        _print_report(report)
+    return 0 if report.ok else 1
 
 
 def cmd_package_verify(store: FileDatasetStore, args: argparse.Namespace) -> int:
@@ -547,6 +881,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--store", type=Path, default=Path("data/store"), help="store folder")
     parser.add_argument(
         "--models", type=Path, default=Path("data/models"), help="model package folder"
+    )
+    parser.add_argument(
+        "--mlflow-dir",
+        type=Path,
+        default=Path("data/mlflow"),
+        help="MLflow tracking store: SQLite database + artifacts (default data/mlflow)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -598,6 +938,9 @@ def main(argv: list[str] | None = None) -> int:
     p_train.add_argument(
         "--test-fraction", type=float, default=0.2, help="held-out share (default 0.2)"
     )
+    p_train.add_argument(
+        "--track", action="store_true", help="also log the cross-validation results to MLflow"
+    )
 
     p_final = sub.add_parser(
         "finalize", help="select, test once on the held-out part, and package the best model"
@@ -614,9 +957,44 @@ def main(argv: list[str] | None = None) -> int:
     p_final.add_argument(
         "--confirm", action="store_true", help="confirm that the test part is read once"
     )
+    p_final.add_argument(
+        "--track", action="store_true", help="after sealing, log the job to MLflow"
+    )
     p_pv = sub.add_parser("package-verify", help="re-check model packages")
     p_pv.add_argument("package_id", nargs="?", help="one package (default: all)")
     p_pv.add_argument("--json", action="store_true", help="machine-readable output")
+
+    p_tp = sub.add_parser(
+        "track-package", help="log (or finish logging) a sealed package to MLflow"
+    )
+    p_tp.add_argument("package_id")
+    p_tp.add_argument("--json", action="store_true", help="machine-readable output")
+
+    p_jobs = sub.add_parser("jobs", help="list tracked jobs (newest first)")
+    p_jobs.add_argument("--kind", choices=("train", "final"))
+    p_jobs.add_argument("--task", choices=TASK_TYPES)
+    p_jobs.add_argument("--dataset", help="dataset reference (name@vN) or start of its SHA-256")
+    p_jobs.add_argument("--algorithm", help="selected algorithm")
+    p_jobs.add_argument("--state", choices=("complete", "incomplete"))
+    p_jobs.add_argument("--limit", type=int)
+    p_jobs.add_argument("--json", action="store_true", help="machine-readable output")
+    p_job = sub.add_parser("job", help="show one tracked job")
+    p_job.add_argument("job_key")
+    p_job.add_argument("--json", action="store_true", help="machine-readable output")
+    p_cmp = sub.add_parser("compare", help="compare tracked jobs by cross-validation score")
+    p_cmp.add_argument("job_keys", nargs="+", metavar="JOB_KEY")
+    p_cmp.add_argument("--metric", help="metric to rank by (default: the jobs' selection metric)")
+    p_cmp.add_argument("--json", action="store_true", help="machine-readable output")
+    p_rep = sub.add_parser("reproduce", help="re-run a tracked job's cross-validation and compare")
+    p_rep.add_argument("job_key")
+    p_rep.add_argument(
+        "--tolerance",
+        type=float,
+        default=DEFAULT_REL_TOLERANCE,
+        help="relative tolerance; a value passes if |diff| <= 1e-9 + tolerance x |logged| "
+        f"(default {DEFAULT_REL_TOLERANCE:g})",
+    )
+    p_rep.add_argument("--json", action="store_true", help="machine-readable output")
 
     args = parser.parse_args(argv)
     store = FileDatasetStore(args.store)
@@ -633,6 +1011,11 @@ def main(argv: list[str] | None = None) -> int:
         "train": cmd_train,
         "finalize": cmd_finalize,
         "package-verify": cmd_package_verify,
+        "track-package": cmd_track_package,
+        "jobs": cmd_jobs,
+        "job": cmd_job,
+        "compare": cmd_compare,
+        "reproduce": cmd_reproduce,
     }
     try:
         return commands[args.command](store, args)
@@ -647,6 +1030,8 @@ def main(argv: list[str] | None = None) -> int:
         SelectionError,
         FinalizeError,
         PackageError,
+        TrackingError,
+        ReproductionError,
         OSError,
     ) as error:
         print(f"ERROR: {error}", file=sys.stderr)

@@ -678,3 +678,181 @@ sealed package folder is read-only (mode 555), so deleting one needs the owner t
 permission first; the 25 parity rows are a small copy of training data inside each package; no
 selection rule can say which model will be better on new data, only which scored best in
 cross-validation.
+
+## D-022 · 2026-11-13 · Executed · Gate 2 follow-up: concurrent finalization verified
+
+**Owner decision:** the owner approved Chunk 2B and asked for one more check before closing Gate 2:
+two separate processes making the test attempt on the same package at nearly the same time.
+
+**What was run.** `tests/test_finalize_concurrent.py` (worker: `tests/concurrent_worker.py`). In each
+of 5 rounds an open package is built, then two real Python processes wait for a shared start time and
+both call `run_final_test` on it (the winner then seals). **Result: PASS in all 5 rounds.** Exactly
+one process created the attempt marker; the other was refused with `PackageSpentError` before reading
+any test row; the test rows were read once in total (counted in each process); one `test_result.json`
+exists; the package ends sealed and passes `package-verify` and a reload. **No code change was needed**
+(the existing exclusive create, `open(..., "x")`, is what decides the race).
+
+**Limits of this check (unverified):** one machine and one local filesystem (APFS); 5 rounds of 2
+processes, not a proof for every interleaving; no crash was injected between the marker and the
+result in a racing process (a crash after the marker is covered, sequentially, by the earlier spent-package
+test). This supersedes the "not tested under concurrent processes" limitation in D-021 for the two-process
+case on this machine. No dependencies were added and no Git or external action was taken.
+
+## D-023 · 2026-11-13 · Owner decision · Gate 2 closed; Chunk 3A approved (Steps 13-14) with clarifications
+
+**Owner decision.** Gate 2 is approved and closed. Phase 3 is split: **Chunk 3A = Steps 13-14** (this
+chunk) and **Chunk 3B = Steps 15-16** (needs its own proposal and approval). Design choices approved:
+(1) track only **after** the package is sealed; (2) log the existing hash-checked package files as
+MLflow artifacts, not a second model format; (3) include `track-package` as a recovery command that
+needs no retraining and no test rows. **Package and store (this settles the Step 13 open items):** the
+full `mlflow` package; **SQLite** metadata and a local artifact directory, both explicit, under
+git-ignored `data/mlflow/`. PostgreSQL is not introduced in this chunk and the MLflow database stays
+logically separate from the future application database (no migration built, no Phase 4 integration
+decided). Verify the UI/server command for the pinned version. Telemetry disabled in the client and the
+UI/server (`MLFLOW_DISABLE_TELEMETRY=true`). Requirements: (a) genuinely idempotent recovery (resume an
+incomplete parent or child, no duplicate runs, metrics or artifacts, parent completed last, a complete
+job rejects another attempt, tested with failures at different points); (b) the sealed package must be
+self-sufficient for tracking (confirm the manifest has everything; if not, add a versioned tracking
+record before sealing, without test rows). Approved external actions: reading MLflow documentation;
+package-index resolution and install of `mlflow`; stop and ask if any existing pin of pandas, numpy,
+scikit-learn, Pandera or joblib would change. The cross-job test-set reuse policy remains an **open
+decision**, untouched.
+
+## D-024 · 2026-11-13 · Executed · Chunk 3A: MLflow setup and logging of training runs
+
+**What was built.** `src/automl_ops/tracking.py` (the only importer of `mlflow`; a test enforces it),
+`scripts/datasets.py` (`--track` on `train` and `finalize`, `track-package`, `--mlflow-dir`),
+`scripts/mlflow_smoke.py`, `scripts/mlflow_ui.py`, `docs/tracking.md`, tests `tests/test_tracking.py`
+(17) and `tests/test_tracking_cli.py` (5). Layout, recovery rules and limits: `docs/tracking.md`.
+Exit code 3 means "finalized or trained, tracking pending".
+
+**Dependency footprint (verified by running it).** Offline resolution failed (`mlflow` is not in the
+uv cache), so the approved package-index resolution was used, first in a scratch copy of
+`pyproject.toml` + `uv.lock`, then `uv add "mlflow>=3.18.0"`. Resolved **mlflow 3.18.0** with
+`mlflow-skinny` and `mlflow-tracing` 3.18.0 and 73 other packages (lock 32 -> 108 packages). Notable:
+sqlalchemy 2.1.8, alembic 1.20.1, flask 3.1.3, fastapi 0.162.5, uvicorn 0.54.0, gunicorn 26.2.0,
+pyarrow 26.0.1, matplotlib 3.11.2, pydantic 2.14.3, docker 7.2.0, databricks-sdk 0.166.0,
+opentelemetry 1.45.2, skops 0.16.0. **Existing pins unchanged:** pandas 3.1.1, numpy 2.5.4,
+scikit-learn 1.9.1, pandera 0.36.0, joblib 1.6.0 (also scipy 1.18.1). **Two side effects on
+unlisted transitive entries, reported rather than treated as a pin change:** `python-dateutil` went
+from 4.0.0 to 2.9.0.post0 (`graphene` 3.4.3 requires `<3`; pandas 3.1.1 accepts it), and
+`uv sync --locked` uninstalled `tzdata` (it is locked only for Windows/Emscripten markers). `uv sync
+--locked` passes. **Size:** `.venv` 324 MiB -> 615 MiB (+291 MiB) right after install, 648 MiB later
+in the session; uv cache +76 MiB. Python 3.12 / arm64 wheels installed and import cleanly. Free disk
+fell from about 11.4 to 8.9 GiB during the chunk; the MLflow-related share is about 0.4 GiB
+(environment, cache, stores), the rest I did not attribute (pytest temp 181 MB and scratch 64 MB
+are reclaimable; nothing was deleted).
+
+**Documentation actually used.** I did not fetch MLflow's web documentation; behaviour was taken from
+the installed 3.18.0 source and CLI help and then by running it (`mlflow server --help`;
+`MLFLOW_DISABLE_TELEMETRY` and `DO_NOT_TRACK` in `mlflow/environment_variables.py` and
+`mlflow/telemetry/utils.py`). Whether the file store is deprecated upstream is **not verified** (not
+needed: SQLite was the owner's choice).
+
+**Self-sufficiency check (requirement b): no tracking record was needed.** The sealed package's
+`manifest.json` already holds `training` (every algorithm with parameters, status, error, seconds,
+per-fold seconds and metrics, summary, pooled out-of-fold metrics), `selection` and its SHA-256,
+`dataset` provenance, `split` fingerprints (including the test-row hash), `settings`, `libraries` and
+`created_at`; `test_result.json` holds the one test evaluation. A test asserts this and the real-data
+check rebuilt both demo jobs from it. Package format unchanged.
+
+**Telemetry (requirement).** Client: in a clean subprocess MLflow's own `is_telemetry_disabled()` is
+`False` without the setting and `True` with it, and `True` when only `automl_ops.tracking` was
+imported (test). UI/server: `scripts/mlflow_ui.py` launched with the variables removed from the
+parent environment; `ps eww` on the server process showed `MLFLOW_DISABLE_TELEMETRY=true`,
+`DO_NOT_TRACK=true`, `MLFLOW_DISABLE_AGENT_HINT=1`; the server answered on `127.0.0.1:5001` only
+(`netstat`), was then stopped, and no server was left running. **Not independently verified:** that no
+outbound packet leaves the machine (no traffic capture; `lsof` showed no sockets here).
+
+**Commands and results.**
+
+| Check | Result |
+| --- | --- |
+| `make check` (ruff, mypy strict on 49 files, pytest) | PASS: 567 passed (545 before + 22 new), one MLflow-internal `SADeprecationWarning` |
+| `scripts/mlflow_smoke.py` (dummy job, 1 ok + 1 failed algorithm, own store) | PASS: parent FINISHED, child FINISHED and FAILED, second attempt refused |
+| Failure sweep: failure injected at each of the 24 write calls of a finalized job, both before and after the call took effect (48 injections) | PASS: each recovered by retry to content identical to a clean run (no duplicate runs, metric points or artifacts); the one case where the last write took effect is rightly refused as already complete |
+| Repeated failures then success; complete job rejects another attempt with zero writes; unwritable store leaves the package sealed and recoverable | PASS |
+| CLI as real subprocesses: `train --track`, `finalize --track`, tracking failure -> exit 3 then `track-package` -> success, repeat refused (exit 2), bad ids | PASS (5 tests) |
+| Real data, Adult and Abalone `finalize --track` (default store `data/mlflow`) plus an Abalone `train --track` | PASS (below) |
+| Real-data recovery: Adult package, upload of `model.joblib` made to fail, then retried | PASS: 4 runs after the failure (parent and one child incomplete), same 4 runs after retry, all complete; CLI repeat refused |
+| Logged vs sealed (`$scratch/verify_demo.py`): every cv mean, fit seconds, test metric (one point each) equal to the manifest and test result; test metrics only on the selected child; every logged package file has the SHA-256 in `seal.json`; `package-verify` still PASS | PASS for both packages |
+
+**Real-data results (Adult, Abalone; seed 42, 5 folds).** Abalone: random forest selected (CV RMSE
+2.1765); test RMSE 2.1635, MAE 1.5703, R² 0.5236; 6.8 s wall, 326 MB peak. Adult: boosting selected
+(CV macro F1 0.8145); test accuracy 0.8674, macro F1 0.8037, ROC-AUC 0.9224; 21.2 s wall, 450 MB peak.
+For comparison, D-021 measured 4.5 s / about 240 MB and 20.0 s / about 368 MB without tracking (separate
+runs, so the difference includes the MLflow import and database creation, about 2 s and 80-100 MB).
+`track-package` alone: 2.7-3.3 s, about 300 MB. The store with three jobs (12 runs, two model copies)
+is 17 MB (database 1.2 MB). Test numbers carry the limitation text on every surface.
+
+**Findings (mine).** My failure-injection helper first miscounted because `MlflowClient.log_text`
+calls `log_artifact` internally (fixed: count outermost calls only); the sweep also showed the last-write
+case above, now asserted. MLflow prints a hint banner when it detects a coding agent; silenced with
+`MLFLOW_DISABLE_AGENT_HINT=1`. Port 5000 may be held by macOS AirPlay Receiver, so the UI defaults to 5001.
+
+**Unchanged by design.** Test-set isolation, the one-attempt rule, sealing, and the cross-job test-reuse
+limitation (still an **open decision**): the dataset hash and test-row fingerprint are logged as tags
+so reuse can be queried later, and nothing counts, warns about or blocks it. `.gitignore` not changed:
+`/data/`, `/mlruns/` and `/mlartifacts/` already cover the MLflow state (read from the file; no Git
+command was run).
+
+**Not covered / limitations (unverified where marked).** Steps 15-16, registry, API, monitoring, UI
+beyond MLflow's own. Two processes logging the same job simultaneously are not coordinated. SQLite is a
+single-writer dev store; Phase 3 runs are throwaway and are not migrated to Postgres. `train --track`
+has no package to retry from (rerun it). The parent run is FINISHED once logging is complete even if
+some algorithms failed (the failed child runs show it). Tracking copies the model into the store
+(disk cost = package size). Outbound traffic was not captured (see Telemetry). Behaviour of MLflow
+3.18.0 on this machine only; no other versions tested.
+
+## D-025 · 2026-11-13 · Owner decision · Gate 3A closed; Chunk 3B approved (Steps 15-16)
+
+**Owner decision.** Chunk 3A is approved and Gate 3A is closed (no further 3A changes). Chunk 3B
+(Steps 15-16) approved with seven decisions: (1) **Step 16 is changed**: the recorded final test result
+is no longer recomputed; reproduction never reads or scores the held-out test part, and the recorded
+result is only checked against the sealed package's `test_result.json` as JSON. (2) Default tolerance
+`1e-9 + 1e-6 x |logged|`, overridable. (3) `reproduce` produces a report only: no MLflow run, tag or
+write to the tracking store, dataset store or packages. (4) `compare` uses CV metrics only; test results
+may appear in a job's detail but never influence a ranking. (5) Jobs with different splits may be
+compared, with the differences reported. (6) Gate 3 demo uses an extra Abalone training-only job (seed 7,
+3 folds). (7) No separate refit-parity check. Clarifications: full-precision `training.json` values are
+the reference, MLflow metrics are cross-checked separately; documentation must say Step 16 verifies the
+training/CV pipeline and records, not the packaged-model refit or the test result. No new dependencies.
+Cross-job test-set reuse remains an **open decision** (no counting, warning or blocking).
+
+## D-026 · 2026-11-13 · Executed · Chunk 3B: history, comparison and reproducibility
+
+**Built.** `tracking.py` read side (`list_jobs`, `read_job`, `JobSummary`, `LoggedJob`, `JobNotFoundError`;
+the `_Api` gained a `read_only` mode that never creates the store or experiment; 3A write paths
+untouched), `compare.py`, `reproduce.py`, CLI `jobs`, `job`, `compare`, `reproduce` in
+`scripts/datasets.py`, `docs/reproducibility.md`, tests `tests/test_history_reproduce.py` (31) and
+`tests/test_history_cli.py` (4). No dependency change. Records updated: BUILD_PLAN (Step 16 text amended),
+ARCHITECTURE, CLAUDE.md, `docs/tracking.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` (ruff, mypy strict, pytest) | PASS: 602 passed (567 + 35 new), 1 MLflow-internal warning, 5:06 |
+| Real data `reproduce` Abalone finalized `m-...bd711371` | PASS, bit-identical, env same; 5.2 s, 319 MB peak; 11 items all PASS incl. package test-result JSON match |
+| Real data `reproduce` Adult finalized `m-...aa7bf39b` | PASS, bit-identical; 19.3 s, 473 MB peak |
+| Real data `reproduce` Abalone CV-only `t-...a5c37b8d` and new job B `t-20261113T053314Z-49dd0ba3` (seed 7, 3 folds) | PASS, bit-identical; 3.8-5.1 s, ~320-330 MB |
+| `compare` A vs B | split note names seed and folds; ranked by CV RMSE |
+| `compare` A vs CV-only job (same config), metric mae | identical CV numbers per algorithm |
+| `compare` Abalone vs Adult / same job twice / unknown job | refused, exit 2 |
+| No writes: SHA-256 of `mlflow.db` and of every file under `data/mlflow/artifacts`, `data/models`, `data/store` before and after all reproduces and compares | unchanged; `package-verify` PASS for both packages |
+| Tamper tests (copy of a store): changed MLflow metric; changed dataset-hash tag; changed logged test result; incomplete job; different data | each fails or is refused with a named reason |
+
+**Test-set isolation evidence.** `finalize._read_test_part`, `run_final_test` and `package.load_package`
+patched to raise while history, compare and reproduce run (pass); AST/source scan: `reproduce.py` and
+`compare.py` import no `mlflow`, `joblib` or `finalize` and contain no test-reading names; the
+`reproduce_job` signature is pinned; the split check uses only a hash of row positions; a test rewrites
+all logged test metrics and the comparison is unchanged.
+
+**Findings (mine).** (a) My proposal said a wrong excluded-column derivation would be caught by the plan
+comparison; in fact an altered plan yields another self-consistent configuration, so the plan check
+alone cannot catch it, the recomputed numbers do (test and docs corrected). (b) A tamper test first did
+nothing because my fake timestamp predated the logged one; fixed and the test now asserts the tamper took
+effect. (c) `artifact_file` returns a downloaded copy, so tampering an artifact needs the run's artifact URI.
+
+**Unverified / limits.** Reproduction checked on this machine and these library versions only. It does not
+reproduce the packaged-model refit or the test result. The `--tolerance` option sets the relative part
+only. MLflow history reads one page (<5000 runs). Real-data tests in the suite use Abalone only; Adult was
+run by hand. `.gitignore` unchanged (`/data/` covers `data/mlflow`; read from file, no Git command run).
