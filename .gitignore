@@ -1,0 +1,36 @@
+# Secrets and local environment (keep the committed template)
+.env
+.env.*
+!.env.example
+
+# Data, models and experiment-tracking output (never committed)
+/data/
+/models/
+/mlruns/
+/mlartifacts/
+/reports/
+*.joblib
+
+# Python environment, caches and build output
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+.coverage
+/htmlcov/
+/dist/
+/build/
+*.egg-info/
+
+# Frontend build output (frontend/ is created in a later phase)
+/frontend/node_modules/
+/frontend/dist/
+
+# OS and editor files
+.DS_Store
+
+# Private working notes (owner decision, D-002)
+/project-notes/
