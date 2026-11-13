@@ -11,10 +11,22 @@
     uv run python scripts/datasets.py explore NAME@vN [--target COLUMN] [--task T] [--json]
     uv run python scripts/datasets.py schema NAME@vN --target COLUMN [--task T] [--exclude A,B]
         [--check OTHER@vN] [--json]
+    uv run python scripts/datasets.py train NAME@vN --target COLUMN [--task T] [--exclude A,B]
+        [--algorithms a,b] [--folds 5] [--seed 42] [--test-fraction 0.2] [--json]
+    uv run python scripts/datasets.py finalize NAME@vN --target COLUMN [--task T] [--exclude A,B]
+        [--algorithms a,b] [--folds 5] [--seed 42] [--test-fraction 0.2]
+        [--selection-metric M] --confirm [--json]
+    uv run python scripts/datasets.py package-verify [PACKAGE_ID] [--json]
 
 `profile`, `validate`, `task`, `explore` and `schema` (Steps 4-6) compute their reports on demand
 from the stored version and never change it. Exit codes: 0 ok, 1 validation errors / verify failure
-/ task errors / structural schema failures, 2 bad input.
+/ task errors / structural schema failures / an algorithm failed, 2 bad input or an infeasible
+training run. `train` (Step 9) cross-validates on a training part only; the held-out test part is
+reserved and never used, and no test-set score is produced. `finalize` (Steps 11-12) trains,
+selects the best algorithm from the cross-validation results alone, freezes that choice, refits it
+on the training part, scores it **once** on the held-out test part and writes a sealed model package
+under `data/models/` (`--models`); it refuses to run without `--confirm`, and exit code 2 also
+covers a refused or failed finalization. `package-verify` re-checks packages (exit 1 if any fails).
 
 The store lives in data/store/ by default (git-ignored). The CLI and, later, the web API both use
 `automl_ops.dataset_store`; this script contains no storage logic of its own.
@@ -30,9 +42,18 @@ from typing import Any
 
 import pandas as pd
 
+from automl_ops.algorithms import AlgorithmError, algorithms_for
 from automl_ops.dataset_store import DatasetStoreError, FileDatasetStore
 from automl_ops.explore import explore_frame
+from automl_ops.finalize import DatasetInfo, FinalizeError, finalize
 from automl_ops.ingest import IngestError, read_limited
+from automl_ops.package import (
+    PackageError,
+    leftover_staging,
+    list_packages,
+    verify_package,
+)
+from automl_ops.pipeline import PipelineError
 from automl_ops.profile import (
     ColumnProfile,
     DatasetProfile,
@@ -49,6 +70,7 @@ from automl_ops.schema import (
     check_csv_bytes,
     profile_for_schema,
 )
+from automl_ops.selection import SelectionError, freeze_selection, select_model
 from automl_ops.task import (
     TASK_TYPES,
     TaskConfig,
@@ -56,6 +78,14 @@ from automl_ops.task import (
     check_task_config,
     class_counts,
     suggest_task,
+)
+from automl_ops.train import (
+    AlgorithmRequest,
+    ProgressEvent,
+    TrainingError,
+    TrainingResult,
+    TrainSettings,
+    run_training,
 )
 from automl_ops.validate import validate
 
@@ -338,9 +368,186 @@ def cmd_schema(store: FileDatasetStore, args: argparse.Namespace) -> int:
     return 0 if checked is None or checked[1].ok else 1
 
 
+def _print_progress(event: ProgressEvent) -> None:
+    head = f"  [{event.algorithm_index}/{event.algorithm_count}] {event.algorithm}"
+    if event.kind == "fold_finished":
+        print(f"{head} fold {event.fold}/{event.folds} ({event.seconds:.2f}s)", file=sys.stderr)
+    elif event.kind == "algorithm_failed":
+        print(f"{head} FAILED: {event.message}", file=sys.stderr)
+
+
+def _score(summary: dict[str, dict[str, object]], name: str) -> str:
+    entry = summary.get(name)
+    if not entry or entry["mean"] is None:
+        return "n/a"
+    mean = float(str(entry["mean"]))
+    return f"{mean:.4f}" + (
+        f" +-{float(str(entry['std'])):.4f}" if entry["std"] is not None else ""
+    )
+
+
+def _print_training(result: TrainingResult, ref: str) -> None:
+    split = result.split
+    print(
+        f"{ref}  target {result.target!r}, task {result.task}, seed {result.settings.seed}\n"
+        f"rows {split.to_dict()['rows']:,}: training part {len(split.train_rows):,}, held-out test "
+        f"part {len(split.test_rows):,} (reserved, not used); "
+        f"{result.folds_used}-fold cross-validation"
+    )
+    print(f"input columns ({len(result.plan.used)}): {', '.join(result.plan.used)}")
+    for d in result.plan.dropped:
+        print(f"left out: {d.name!r} ({d.kind}): {d.reason}")
+    for warning in result.warnings:
+        print(f"WARNING: {warning}")
+    metrics = (
+        ("accuracy", "f1_macro", "roc_auc")
+        if result.task == "classification"
+        else ("rmse", "mae", "r2")
+    )
+    print(f"\n{'algorithm':<26} {'status':<7} " + " ".join(f"{m:<17}" for m in metrics) + "seconds")
+    for r in result.results:
+        scores = " ".join(f"{_score(r.summary, m):<17}" for m in metrics) if r.summary else ""
+        print(f"{r.key:<26} {r.status:<7} {scores or 'n/a':<53}{r.seconds:.1f}")
+        if r.error:
+            print(f"    {r.error['type']}: {r.error['message']}")
+    print(
+        "\nScores are mean +- standard deviation over folds, from cross-validation on the training "
+        "part only (no test-set scores)."
+    )
+
+
+def cmd_train(store: FileDatasetStore, args: argparse.Namespace) -> int:
+    version, frame = read_version_frame(store, args.ref)
+    config = _task_config(profile_frame(frame), args)
+    keys = (
+        [k.strip() for k in args.algorithms.split(",") if k.strip()]
+        if args.algorithms
+        else [a.key for a in algorithms_for(config.task)]
+    )
+    settings = TrainSettings(test_fraction=args.test_fraction, seed=args.seed, folds=args.folds)
+    result = run_training(
+        frame,
+        config,
+        [AlgorithmRequest(k) for k in keys],
+        settings,
+        progress=None if args.json else _print_progress,
+    )
+    if args.json:
+        payload = {"dataset_ref": version.ref, "sha256": version.sha256, **result.to_dict()}
+        print(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False))
+    else:
+        _print_training(result, version.ref)
+    return 0 if result.ok else 1
+
+
+def _print_finalize(report: dict[str, Any], result: Any, training: TrainingResult) -> None:
+    print("\nSelection")
+    for entry in report["ranking"]:
+        std = entry["metric_std"]
+        spread = f" +-{std:.4f}" if std is not None else ""
+        print(
+            f"  {entry['rank']}. {entry['algorithm']:<26} {report['metric']} "
+            f"{entry['metric_mean']:.4f}{spread}  ({entry['decided_by']})"
+        )
+    for item in report["excluded"]:
+        print(f"  excluded: {item['algorithm']}: {item['reason']}")
+    for warning in report["warnings"]:
+        print(f"WARNING: {warning}")
+    print(report["explanation"])
+    if report["positive_class"] is not None:
+        print(f"positive class: {report['positive_class']!r}")
+    evaluation = result.test_result["evaluation"]
+    scores = ", ".join(
+        f"{name} {value:.4f}" for name, value in evaluation["metrics"].items() if value is not None
+    )
+    print(
+        f"\nFinal test (held-out part, {evaluation['rows']:,} rows, read once, selected model "
+        f"only): {scores}"
+    )
+    print(f"NOTE: {result.test_result['limitation']}")
+    print(f"package {result.package_id} sealed at {result.path}")
+
+
+def cmd_finalize(store: FileDatasetStore, args: argparse.Namespace) -> int:
+    if not args.confirm:
+        raise CliError(
+            "finalize reads the held-out test part once for the selected model. "
+            "Add --confirm to proceed."
+        )
+    version, frame = read_version_frame(store, args.ref)
+    config = _task_config(profile_frame(frame), args)
+    keys = (
+        [k.strip() for k in args.algorithms.split(",") if k.strip()]
+        if args.algorithms
+        else [a.key for a in algorithms_for(config.task)]
+    )
+    settings = TrainSettings(test_fraction=args.test_fraction, seed=args.seed, folds=args.folds)
+    # One training run feeds the selection, the freeze, the refit and the package.
+    training = run_training(
+        frame,
+        config,
+        [AlgorithmRequest(k) for k in keys],
+        settings,
+        progress=None if args.json else _print_progress,
+    )
+    report = select_model(training, args.selection_metric)
+    frozen = freeze_selection(training, report)
+    result = finalize(
+        frame,
+        config,
+        training,
+        frozen,
+        DatasetInfo.from_version(version),
+        args.models,
+        confirm_final_test=True,
+    )
+    if args.json:
+        payload = {
+            "dataset_ref": version.ref,
+            "package_id": result.package_id,
+            "path": str(result.path),
+            "selection": report.to_dict(),
+            "selection_sha256": frozen.sha256,
+            "test_result": result.test_result,
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False))
+    else:
+        _print_training(training, version.ref)
+        _print_finalize(report.to_dict(), result, training)
+    return 0
+
+
+def cmd_package_verify(store: FileDatasetStore, args: argparse.Namespace) -> int:
+    ids = [args.package_id] if args.package_id else list_packages(args.models)
+    checks = [verify_package(args.models, i) for i in ids]
+    leftovers = [] if args.package_id else leftover_staging(args.models)
+    if args.json:
+        payload = {
+            "packages": [
+                {"id": c.package_id, "state": c.state, "ok": c.ok, "problems": list(c.problems)}
+                for c in checks
+            ],
+            "leftover_staging": leftovers,
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        for c in checks:
+            print(f"{'PASS' if c.ok else 'FAIL'}  {c.package_id}  [{c.state}]")
+            for problem in c.problems:
+                print(f"    {problem}")
+        for name in leftovers:
+            print(f"NOTE  {name}: an interrupted creation (never usable)")
+        if not checks:
+            print("no packages")
+    return 0 if all(c.ok for c in checks) else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Dataset store tool")
     parser.add_argument("--store", type=Path, default=Path("data/store"), help="store folder")
+    parser.add_argument(
+        "--models", type=Path, default=Path("data/models"), help="model package folder"
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_ingest = sub.add_parser("ingest", help="store a CSV as a dataset version")
@@ -382,6 +589,35 @@ def main(argv: list[str] | None = None) -> int:
     p_schema.add_argument("--check", metavar="REF", help="another version to check against it")
     add_task_options(p_schema, target_required=True)
 
+    p_train = sub.add_parser("train", help="cross-validate algorithms on the training part")
+    p_train.add_argument("ref", help="e.g. adult@v1")
+    add_task_options(p_train, target_required=True)
+    p_train.add_argument("--algorithms", help="comma-separated keys (default: all for the task)")
+    p_train.add_argument("--folds", type=int, default=5, help="cross-validation folds (default 5)")
+    p_train.add_argument("--seed", type=int, default=42, help="random seed (default 42)")
+    p_train.add_argument(
+        "--test-fraction", type=float, default=0.2, help="held-out share (default 0.2)"
+    )
+
+    p_final = sub.add_parser(
+        "finalize", help="select, test once on the held-out part, and package the best model"
+    )
+    p_final.add_argument("ref", help="e.g. adult@v1")
+    add_task_options(p_final, target_required=True)
+    p_final.add_argument("--algorithms", help="comma-separated keys (default: all for the task)")
+    p_final.add_argument("--folds", type=int, default=5, help="cross-validation folds (default 5)")
+    p_final.add_argument("--seed", type=int, default=42, help="random seed (default 42)")
+    p_final.add_argument(
+        "--test-fraction", type=float, default=0.2, help="held-out share (default 0.2)"
+    )
+    p_final.add_argument("--selection-metric", help="metric to rank by (default: f1_macro or rmse)")
+    p_final.add_argument(
+        "--confirm", action="store_true", help="confirm that the test part is read once"
+    )
+    p_pv = sub.add_parser("package-verify", help="re-check model packages")
+    p_pv.add_argument("package_id", nargs="?", help="one package (default: all)")
+    p_pv.add_argument("--json", action="store_true", help="machine-readable output")
+
     args = parser.parse_args(argv)
     store = FileDatasetStore(args.store)
     commands = {
@@ -394,10 +630,25 @@ def main(argv: list[str] | None = None) -> int:
         "task": cmd_task,
         "explore": cmd_explore,
         "schema": cmd_schema,
+        "train": cmd_train,
+        "finalize": cmd_finalize,
+        "package-verify": cmd_package_verify,
     }
     try:
         return commands[args.command](store, args)
-    except (IngestError, DatasetStoreError, SchemaError, CliError, OSError) as error:
+    except (
+        IngestError,
+        DatasetStoreError,
+        SchemaError,
+        CliError,
+        TrainingError,
+        AlgorithmError,
+        PipelineError,
+        SelectionError,
+        FinalizeError,
+        PackageError,
+        OSError,
+    ) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 2
 

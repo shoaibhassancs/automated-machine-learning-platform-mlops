@@ -19,15 +19,26 @@ Easy-reading step notes for interview prep: `project-notes/BUILD_LOG.md`.
 ## Current state
 Steps 1 (scaffold), 2 (demo data), 3 (CSV ingestion and dataset versions), 4 (profiling and
 validation: 4A, and 4B the Pandera feature schema), 5 (task configuration) and 6 (exploration data)
-are done and verified, and **Gate 1 is closed** (owner-approved 2026-11-13); see `DECISIONS.md` and
-`BUILD_LOG.md`. Runtime dependencies: pandas, numpy, pandera. Dev: pytest, ruff, mypy, pandas-stubs.
+are done and verified, and **Gate 1 is closed** (owner-approved 2026-11-13). **Chunk 2A (Steps 7, 8,
+10 and 9: preprocessing pipeline, algorithm catalogue, metrics, split and cross-validation) is done
+and verified (owner-approved complete)**. **Chunk 2B (Steps 11-12: selection, the single final test,
+model packaging) is implemented and verified and awaits the owner's Gate 2 review**; the model
+registry and everything after it is not started. See `DECISIONS.md` and `BUILD_LOG.md`. Runtime
+dependencies: pandas, numpy, pandera, scikit-learn, joblib. Dev: pytest, ruff, mypy, pandas-stubs.
 Code: `demo_data.py` (Step 2), `ingest.py` and `dataset_store.py` (Step 3), `profile.py` and
-`validate.py` (4A), `task.py` (5), `explore.py` (6), `schema.py` (4B), and the scripts
-`prepare_demo_data.py` and `datasets.py`. Demo data (UCI Adult and Abalone, CC BY 4.0) is prepared by
+`validate.py` (4A), `task.py` (5), `explore.py` (6), `schema.py` (4B), `pipeline.py` (7),
+`algorithms.py` (8), `evaluate.py` (10), `train.py` (9), `selection.py` and `finalize.py` (11),
+`package.py` (12), `hashing.py`, and the scripts `prepare_demo_data.py` and `datasets.py`. Demo data (UCI Adult and Abalone, CC BY 4.0) is prepared by
 `make demo-data` into git-ignored `data/`; see `docs/data.md`. Dataset versions live in git-ignored
 `data/store/` (`docs/ingestion.md`); profile, validate, task, explore and schema results are computed
 on demand and never stored (`docs/profiling.md`, `docs/task-config.md`, `docs/exploration.md`,
-`docs/schema.md`). Next planned work (Phase 2) needs the owner's approval of a proposal first.
+`docs/schema.md`); `train` is cross-validation only and never reads the held-out test part
+(`docs/training.md`); only `finalize` reads it, once per package, for the selected model, after the
+frozen selection is verified and the attempt marker exists (`docs/selection-and-packaging.md`). Model
+packages live in git-ignored `data/models/`; only sealed packages load. scikit-learn has no type information, so mypy has a narrow override for
+`sklearn.*` only. Native thread pools are capped at 2 in `automl_ops/__init__.py`. Next planned work
+(Phase 3, MLflow) needs the owner's Gate 2 approval and a proposal first. The cross-job test-set
+reuse policy is **still an open decision**.
 
 ## Working process (approval gates)
 Work in **chunks**: a phase, or a group of steps, sized by where the owner's input is needed.
@@ -127,9 +138,10 @@ Work in **chunks**: a phase, or a group of steps, sized by where the owner's inp
   the owner approves one.
 - `make lint` (ruff), `make typecheck` (mypy strict), `make test` (pytest), `make check` (all three).
   Run them after code changes and report real results.
-- `uv run python scripts/datasets.py ingest|list|show|verify|profile|validate|task|explore|schema`
+- `uv run python scripts/datasets.py ingest|list|show|verify|profile|validate|task|explore|schema|train`
   manages dataset versions (default store `data/store/`). Versions are immutable and read-only; never
   edit or replace a stored file. All commands except `ingest` read a version and change nothing.
+  `train` cross-validates on a training part only; it never reads the held-out test part.
 - Data-reading policy: cells are read as text; only an empty cell is missing; NA-like text and
   values with leading zeros (`007`) keep their original text and are reported, never converted.
   Task-suitability checks (task type, class sizes) live in `task.py` (Step 5), not in profile/validate.

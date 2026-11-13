@@ -488,3 +488,193 @@ and demo data, not that the thresholds suit every dataset, and not that observat
   delete only by the exact full path of a file created in this session; never wildcard across the temp
   root; if a pattern is unavoidable, list its matches first and confirm each is mine; do not delete the
   scratchpad itself.
+
+## D-018 · 2026-11-13 · Owner decision · Chunk 2A approved (Steps 7, 8, 10, 9) with clarifications
+- **Approved:** one chunk for the preprocessing pipeline (7), algorithm catalogue (8), metrics (10) and
+  split/training runner (9), built in the order 7, 8, 10, 9; Chunk 2B (Steps 11-12) is separate and was
+  not started. **Dependency:** scikit-learn as the only new direct dependency; official package-index
+  contact for metadata, compatibility, resolution and installation, after checking compatibility with
+  Python 3.12.16, NumPy 2.5.4, pandas 3.1.1, the current pandas-stubs and Pandera, macOS arm64, sizes
+  and disk; a narrowly scoped mypy override for `sklearn` was allowed if genuinely necessary, with no
+  stub packages; if incompatible, stop and report, no downgrade or substitute.
+- **Design (owner):** numeric columns strictly parsed, median-imputed and scaled where appropriate;
+  categorical columns most-frequent-imputed and one-hot encoded, unseen categories without a crash;
+  `text`, `code`, `mixed` and `empty` columns excluded by default and reported with reasons, never
+  silently; **preprocessing fitted separately inside every cross-validation fold** (proper
+  Pipeline/ColumnTransformer; no global fit first); malformed non-empty values caught by validation,
+  not silently converted to missing. Six algorithms with typed parameter schemas (unknown keys and
+  invalid values rejected, no arbitrary code), early stopping off. Metrics as proposed with consistent
+  class order, one-vs-rest macro multiclass ROC-AUC, explicit handling of undefined metrics, residuals
+  tied to observations, out-of-fold results only. 20% holdout, seed 42, stratified (classification) or
+  shuffled (regression), five folds by default; after the split, if the smallest training class has 2 to
+  4 rows the folds are reduced to that count with a warning; fewer than 2 training rows in a class, or
+  an otherwise infeasible split or CV, stops cleanly with an actionable error; Step 5 rules unchanged.
+  Sequential algorithms, conservative threads, structured output (not only CLI text), a thin `train`
+  command. **Held-out test part untouched** (reserved by row indices; changing only test labels must not
+  change cross-validation results); no test metrics.
+
+## D-019 · 2026-11-13 · Executed · Chunk 2A: pipeline, algorithms, metrics, split and cross-validation
+**Dependency (the only external contact: the Python package index, via uv).** Before installing:
+Python 3.12.16 arm64 on macOS 15.2, about 12 GiB free disk (95% used), about 1.5 GB of free plus
+inactive memory. `uv pip install --dry-run scikit-learn` resolved without touching NumPy or pandas,
+then `uv add scikit-learn`. **Resolved (exact):** `scikit-learn 1.9.1` (declared as
+`scikit-learn>=1.9.1`) plus new transitive `scipy 1.18.1`, `joblib 1.6.0`, `threadpoolctl 3.8.0`,
+`cloudpickle 3.1.2`, `narwhals 2.28.0` (6 packages added; NumPy 2.5.4, pandas 3.1.1, pandas-stubs
+3.1.0.261029 and Pandera 0.36.0 unchanged; `pyproject.toml` diff confirmed against a copy taken
+beforehand). Constraints read from metadata: scikit-learn needs `numpy>=1.24.1`; **scipy needs
+`numpy>=2.0.0,<2.8`** (NumPy 2.5.4 satisfies it; a future NumPy 2.8 would be blocked until scipy
+allows it). **Compatibility (verified by running it):** scikit-learn pipelines, `ColumnTransformer`,
+`SimpleImputer`, `OneHotEncoder`, gradient boosting and random forests worked on pandas 3.1.1 string
+data, in the same process as Pandera, with unseen and missing values; strict mypy passes. **Typing:**
+no `py.typed` marker, so `pyproject.toml` has one override, `ignore_missing_imports` for
+`sklearn.*` only; the custom steps are module-level functions in `FunctionTransformer`, so no
+untyped scikit-learn class is subclassed and no `type: ignore` exists anywhere. **Cost (measured):**
+about 106 MB on disk (sklearn 31 MB, scipy 71 MB, joblib 1.2 MB, narwhals 2.3 MB, small rest); the first
+import took 21.7 s (cold byte-compilation after install), later imports about 0.9 s; disk unchanged at
+11-12 GiB.
+
+**What was built.** `pipeline.py` (column plan from profile kinds with reported exclusions; strict
+`text_to_number` that raises `MalformedValueError`; `text_to_category`; one `build_pipeline`),
+`algorithms.py` (closed registry, `ParamSpec`/`AlgorithmSpec`, `validate_params`),
+`evaluate.py` (scalar metrics with `undefined` reasons, confusion matrix, per-class tables, thinned
+ROC/PR points, residual points with row numbers, fold summaries), `train.py` (`make_split`,
+`plan_folds`, `make_folds`, `fit_fold`, `run_training`, `TrainingResult.to_dict()`, progress events),
+the `train` command in `scripts/datasets.py`, `docs/training.md`, and the thread caps in
+`automl_ops/__init__.py`.
+
+**Judgment calls (deviations from the letter of the proposal, all within the approved design):**
+(1) **Thread caps** are set as environment defaults (`OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`,
+`VECLIB_MAXIMUM_THREADS` = 2, only if unset) in the package `__init__`, before scikit-learn loads,
+because scikit-learn has no public thread-limit API and `threadpoolctl` was not an approved direct
+dependency; this affects every import of `automl_ops`. Verified: gradient boosting on Adult took 8.4 s
+with the cap and 8.7 s with 8 threads, using 13 s against 39 s of CPU. (2) The runner **re-runs the
+Step 5 task checks** on the whole dataset as a pre-flight (feasibility of a stratified split depends on
+all labels) and builds the column plan from a profile of the **training part only**. (3) Per-fold macro
+metrics average over the classes present in that fold's rows; the pooled out-of-fold evaluation covers
+all classes. (4) Step 10 was built before Step 9, as the runner needs it. (5) Real-data tests train
+Abalone in full but a deterministic 5,000-row sample of Adult, to keep `make check` near 98 s (was 28 s);
+the full pools were measured separately.
+
+**Checks (all actually run):**
+| Check | Result |
+| --- | --- |
+| scikit-learn compatibility probe (pandas 3.1.1 string data, Pipeline, ColumnTransformer, boosting, with Pandera imported, unseen and missing values) | PASS |
+| `pipeline` tests (21): each kind's treatment and every exclusion reported with a reason; strict parsing (8 malformed spellings raise); missing and unseen categories score; unseen = all zeros, missing = fitted mode; scaling only when asked; pipeline can be saved and loaded; learned median, mean, scale and categories equal values from the fitted rows only, and a global fit differs | PASS |
+| `algorithms` tests (35): the six algorithms in order; all defaults valid and built; fixed settings (one-thread forest, early stopping off); every bound inclusive and one step outside rejected; wrong types, bools, NaN, unknown keys, injection-style strings, unknown algorithm or task rejected; problems reported together; JSON-ready | PASS |
+| `evaluate` tests (19): binary and three-class metrics worked by hand; AUC equals an explicit pairwise formula; one-vs-rest macro AUC; positive class and class order; confusion totals; undefined cases are `null` with reasons and strict JSON; invalid input errors; curves end at the right points, trapezoid area equals AUC, thinning keeps endpoints, 12-class curve limit; regression by hand; residuals stay on the right rows after thinning; fold summaries | PASS |
+| `train` tests (49): holdout seeded, stratified, disjoint, covers all rows; regression shuffled; infeasible splits stop with actionable errors (1-row class, too many classes, 2-row class); 3, 4, 5 and 6 rows in the smallest class give 2, 3, 4 and 5 folds; **preprocessing fitted per fold on that fold's rows only (spy on the real runner path)**; validation-only categories not learned; out-of-fold predictions cover the training part once with probabilities summing to 1; residuals point at the right original rows; reproducible; failures (at build time and at fit time) isolated; progress order and sequential execution; request validation before training; excluded columns reported; **changing only the test rows' labels and features changes no result, only training ids reach fitting, no test keys in results** | PASS |
+| CLI as a real subprocess (4 new): comparison table and `--json` structure, all default algorithms, infeasible requests exit 2 without a traceback, store byte-identical afterwards, tampered file refused | PASS |
+| Real demo data (4): Abalone full pool all defaults (2,339 training rows, R² 0.52-0.55, residual rows verified), exact repeat and test-part isolation, Adult 5,000-row sample all defaults (AUC above 0.8, confusion totals equal training rows, `>50K` positive class), demo file hashes unchanged | PASS |
+| `make check` (ruff, strict mypy 33 files, pytest): **493 passed** (132 new on top of 361); `uv sync --locked`; demo-data `--verify-only` ALL PASS | PASS |
+| Full runs, all default algorithms, sequential, one run each: Abalone pool 4.1 s wall, 4.2 s CPU, about 193 MB peak; Adult pool 18.0 s wall, 25.4 s CPU, about 401 MB peak (`/usr/bin/time -l`) | measured |
+
+**Results (cross-validation on the training part, mean over 5 folds; not test scores).** Abalone
+`Rings`: RMSE ridge 2.238, random forest 2.177, boosting 2.207; R² 0.525, 0.550, 0.537. Adult `income`:
+accuracy 0.851, 0.856, 0.873 and ROC-AUC 0.906, 0.903, 0.927 for logistic regression, random forest,
+boosting.
+
+**Findings during the work (mine, caught by my own checks):** a hand-counted confusion matrix in a test
+was wrong (the code was right); a test assumed a 2-row class always loses one row to the test part,
+which depends on the sizes; a test used an empty string where a missing value was meant (in a frame
+only NaN or `None` is missing); strict mypy needed typed test constants and one narrowing workaround.
+No `type: ignore` was added.
+
+**Deferred / not done:** Step 11 (selection, the single final test evaluation, the open test-reuse
+decision), Step 12 (packaging, joblib declared when first imported), any refit; a typed loader beyond
+the pipeline; API and UI.
+
+**Not covered / limitations:** untuned defaults on two datasets; one run per measurement; the 100,000 x
+100 ingestion limit was not trained and dense one-hot memory at that size is unmeasured (my rough worst
+case is a few GB, unverified); bit-identical repeats were verified on this machine and these library
+versions only; a numeric column of identifiers still becomes an input; scipy limits NumPy to below 2.8.
+The checks show the workflow behaves as specified on invented and demo data, not that the defaults suit
+other datasets, and nothing here says anything about test-set performance.
+
+## D-020 · 2026-11-13 · Owner decision · Chunk 2B approved (Steps 11-12) with two clarifications
+
+- **Approved:** the Chunk 2B proposal (selection, single final test, packaging; Gate 2), including macro
+  F1 and RMSE as default selection metrics with the closed override list, tie tolerance 1e-9 and the
+  proposed tie-break order, exclusion of failed and undefined candidates, an explainable selection
+  report, a frozen selection verified by SHA-256, one test attempt per package (a package whose attempt
+  marker exists and then fails is spent, no silent retry, no fallback to the runner-up), directory
+  packages under `data/models/`, package and model-file SHA-256 checks, format and scikit-learn version
+  checks, parity after reload, read-only completed packages, `finalize` with `--confirm`,
+  `package-verify`, and a thin prediction interface for parity tests only.
+- **Owner decisions kept open:** cross-job test-set reuse stays unresolved; only the dataset hash and
+  the test-row fingerprint are recorded so reuse can be recognised later. No enforcement policy.
+- **Clarification 1 (lifecycle):** package files cannot be read-only before the attempt marker and the
+  test result are written. Resolved as: staging (writable) -> verified reload -> atomic rename -> *open*
+  (files read-only, folder writable) -> exclusive attempt marker before any test row is read -> single
+  test -> exclusive result -> seal and read-only. Spent packages stay spent.
+- **Clarification 2 (handoff):** training and finalization run in one command and one process, so the
+  frozen selection, the refit and the provenance refer to the same `TrainingResult`; the frozen record
+  is checked against the training result and the data before anything is written.
+- **Dependency:** `joblib` declared as a direct dependency (already installed). Offline lock update
+  first; stop and ask before any package-index contact. No other new dependency. No Git actions.
+- **Not in this chunk:** registry, REST API, deployment, monitoring, web interface.
+
+## D-021 · 2026-11-13 · Executed · Chunk 2B: selection, the single final test and model packages
+
+**Built.** `selection.py` (ranking, tie-breaking, report, `FrozenSelection`), `finalize.py` (same-run
+checks, training-part refit, attempt marker, the single test, seal), `package.py` (create, attempt,
+result, seal, load, verify, thin predict), `hashing.py` (canonical JSON and SHA-256 shared by selection
+and packaging); `scripts/datasets.py` gained `finalize` and `package-verify` and a global `--models`
+folder (default `data/models/`); `docs/selection-and-packaging.md` is new; `docs/training.md`,
+`CLAUDE.md`, `BUILD_LOG.md`, `BUILD_PLAN.md` and `ARCHITECTURE.md` updated. `/data/` was already in
+`.gitignore`, so `data/models/` is ignored (read from the file; no Git command run).
+
+**Changes to existing code (small, behaviour-preserving):** `train.py` gained `Split.fingerprints()`
+(counts plus SHA-256 of each part's row positions) and its private `_targets` became the shared
+`target_values`; no result changed (the 493 earlier tests pass unchanged).
+
+**Design points.** The test rows are indexed only in `finalize._read_test_part` (and counted or
+fingerprinted in `train.py`/the CLI); it needs a token created only after `attempt.json` exists
+(exclusive create). The packaged model, not the in-memory refit, is what is scored on the test part.
+The test result is created exclusively and cannot be overwritten; `seal.json` holds every file's SHA-256
+and the package hash. Only sealed packages load; open, spent and interrupted staging folders are
+reported by `package-verify`. `parity.json` holds up to 25 training rows (plus one all-missing row) with
+the predictions made for them, so a package folder holds a small piece of data.
+
+**Commands and results.**
+
+| Check | Result |
+| --- | --- |
+| `uv lock --offline` after declaring joblib | PASS: resolved 32 packages in 25 ms; the lock diff is two metadata lines (joblib listed as a direct dependency of `automl-ops`); no download, no index contact |
+| `make check` (ruff, strict mypy on 42 files, pytest) | PASS: **544 passed** in 120 s (51 new: selection 14, package 17, finalize 16, CLI 2, real data 2) |
+| `uv sync --locked` | PASS (checked 31 packages) |
+| Selection: winner by fold-mean, direction per metric, override list, tolerance edge (inside and just outside 1e-9), every tie-break step, input-order independence, failed/undefined/pooled-undefined/only-one candidates, close race and disagreement warnings, signatures take no frame, frozen hash and tamper check | PASS |
+| Test isolation: rewriting test features, labels and categories (fixed split) leaves the frozen selection, fitted statistics and categories identical while test results differ (sensitivity control); malformed test values do not disturb training or selection; source scan finds `test_rows` used only by `Split.fingerprints` and `_read_test_part` | PASS |
+| Order and one-attempt rule: the test part is read once, after the freeze check and with the marker present and the package already reloadable; only one pipeline predicts after the read; a second attempt is refused before any test row is read; a failure after the marker leaves a spent package, no second package; a refit failure leaves no package and no staging | PASS |
+| Packaging: open state and read-only files, failed parity leaves nothing, interrupted staging reported, exclusive marker and result, seal needs both, sealed folder is read-only, ids resolve only inside the folder (no `..`, no symlinks), version mismatch refused unless allowed, a changed model file is caught before `joblib.load` is called, changed manifest or missing file fails, writable sealed package reported | PASS |
+| Parity and preservation: reloaded predictions and probabilities match the saved reference to 1e-12, equal an independent refit on the training rows, feature order and classes preserved, extra columns ignored, missing column named, malformed value rejected, manifest content (task, kinds, dataset hash, selection hash, seed, settings, positive class) | PASS |
+| CLI as a real subprocess: refused without `--confirm` (nothing written), sealed package and `package-verify` PASS, tampered model file FAIL with exit 1, bad algorithm gives exit 2 without a traceback | PASS |
+| Real demo data through the library (Abalone full pool, Adult 1-in-7 sample): finalize, reload, verify, and an identical second run gives the same frozen selection and predictions | PASS |
+
+**Demo runs (CLI, `finalize ... --confirm`, scratch store and models folder, one run each).**
+
+| Pool | Wall | CPU (user) | Peak memory | Package size | Selected | Test (held-out part, read once) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Abalone (2,924 rows) | 4.5 s | 4.9 s | about 240 MB | 13 MB (random forest, 100 trees) | random forest, CV RMSE 2.177 | RMSE 2.164, MAE 1.570, R² 0.524 |
+| Adult (34,190 rows) | 20.0 s | 28.5 s | about 368 MB | 504 KB (boosting) | boosting, CV macro F1 0.815 | accuracy 0.867, macro F1 0.804, ROC-AUC 0.922 |
+
+`package-verify` passed both (reload and parity). Abalone's win is reported as "not a clear winner"
+(margin 0.03 RMSE inside a fold spread of 0.09). Test numbers carry the limitation text: repeated use of
+the same test part across jobs can influence model choices; not independent or leakage-proof.
+
+**Findings (mine, caught by my own checks).** The list of tied algorithms in the report followed input
+order (a shuffle test showed it); it is now sorted. Two test regexes and a mypy re-export complaint were
+mine; the code was right. joblib ships no type information, so `import joblib` carries one inline
+`type: ignore[import-untyped]`; I did not widen the mypy override (which stays `sklearn.*` only).
+
+**Deferred / not done:** registry, API, deployment, monitoring, UI; the cross-job reuse policy (open);
+anything after Gate 2.
+
+**Not covered / limitations:** training and packaging at the 100,000 x 100 ingestion limit (package
+size and dense one-hot memory unmeasured; a random forest on a large dataset can make a package of
+hundreds of MB, unverified); the exclusive-create rule relies on the local filesystem honouring
+exclusive create, tested with sequential calls in one process only, not under concurrent processes; parity and reproducibility are checked on this machine and these library versions only; the
+hash and read-only checks do not protect against someone who can rewrite or chmod the folder; a
+sealed package folder is read-only (mode 555), so deleting one needs the owner to restore write
+permission first; the 25 parity rows are a small copy of training data inside each package; no
+selection rule can say which model will be better on new data, only which scored best in
+cross-validation.

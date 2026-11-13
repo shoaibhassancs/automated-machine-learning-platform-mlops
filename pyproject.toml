@@ -7,7 +7,9 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "numpy>=2.5.4",
     "pandas>=3.1.1",
+    "joblib>=1.6.0",
     "pandera>=0.36.0",
+    "scikit-learn>=1.9.1",
 ]
 
 [build-system]
@@ -33,6 +35,12 @@ select = ["E", "F", "I", "B", "UP"]
 python_version = "3.12"
 strict = true
 files = ["src", "tests", "scripts"]
+
+# scikit-learn ships no type information (no py.typed marker). Only its imports are relaxed;
+# everything else stays under strict checking.
+[[tool.mypy.overrides]]
+module = ["sklearn", "sklearn.*"]
+ignore_missing_imports = true
 
 
 [tool.pytest.ini_options]

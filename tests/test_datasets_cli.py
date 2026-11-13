@@ -248,3 +248,121 @@ def test_cli_task_explore_schema_leave_the_store_untouched_and_refuse_tampered_f
         refused = run(store, *args)
         assert refused.returncode == 2 and "does not match its recorded SHA-256" in refused.stderr
         assert "Traceback" not in refused.stderr
+
+
+def test_cli_train_prints_a_comparison_and_structured_json(tmp_path: Path) -> None:
+    import json
+
+    store = _ingest_demo(tmp_path)
+    args = ("train", "demo@v1", "--target", "target", "--folds", "3")
+    text = run(store, *args, "--algorithms", "logistic_regression,hist_gradient_boosting")
+    assert text.returncode == 0, text.stderr
+    assert "task classification" in text.stdout and "3-fold cross-validation" in text.stdout
+    assert "logistic_regression" in text.stdout and "hist_gradient_boosting" in text.stdout
+    assert "no test-set scores" in text.stdout and "held-out test part" in text.stdout
+    assert "fold 3/3" in text.stderr  # progress goes to stderr, results to stdout
+
+    payload = json.loads(run(store, *args, "--algorithms", "logistic_regression", "--json").stdout)
+    assert payload["train_format"] == 1 and payload["dataset_ref"] == "demo@v1"
+    assert payload["folds"] == {"requested": 3, "used": 3}
+    assert payload["split"]["test_rows"] == 24 and payload["split"]["train_rows"] == 96
+    assert [r["status"] for r in payload["results"]] == ["ok"]
+    assert payload["results"][0]["oof"]["confusion_matrix"]  # chart data, not just a table
+
+
+def test_cli_train_runs_all_default_algorithms_for_the_task(tmp_path: Path) -> None:
+    store = _ingest_demo(tmp_path)
+    result = run(store, "train", "demo@v1", "--target", "target")
+    assert result.returncode == 0, result.stderr
+    for key in ("logistic_regression", "random_forest", "hist_gradient_boosting"):
+        assert key in result.stdout
+
+
+def test_cli_train_reports_infeasible_requests_without_a_traceback(tmp_path: Path) -> None:
+    store = _ingest_demo(tmp_path)
+    unknown = run(store, "train", "demo@v1", "--target", "target", "--algorithms", "svm")
+    assert unknown.returncode == 2 and "unknown" in unknown.stderr
+    assert "Traceback" not in unknown.stderr
+    folds = run(store, "train", "demo@v1", "--target", "target", "--folds", "1")
+    assert folds.returncode == 2 and "folds must be" in folds.stderr
+
+    tiny = tmp_path / "tiny_class.csv"
+    rows = ["x,g,t"] + [f"{i},{('u', 'v')[i % 2]},{('a', 'b')[i % 2]}" for i in range(60)]
+    rows += ["1,u,rare", "2,v,rare"]
+    tiny.write_text("\n".join(rows) + "\n")
+    assert run(store, "ingest", "tiny", str(tiny)).returncode == 0
+    refused = run(store, "train", "tiny@v1", "--target", "t")
+    assert refused.returncode == 2 and "fewer than 2 training rows" in refused.stderr
+    assert "Traceback" not in refused.stderr
+
+
+def test_cli_train_leaves_the_store_untouched_and_refuses_tampered_files(tmp_path: Path) -> None:
+    store = _ingest_demo(tmp_path)
+    before = _snapshot(store)
+    ok = run(store, "train", "demo@v1", "--target", "target", "--algorithms", "ridge")
+    assert ok.returncode in (0, 2)  # ridge is a regression algorithm: refused for this task
+    run(store, "train", "demo@v1", "--target", "target", "--algorithms", "logistic_regression")
+    assert _snapshot(store) == before
+
+    path = store / "demo" / "v0001.csv"
+    path.chmod(0o644)
+    path.write_bytes(before["demo/v0001.csv"].replace(b"g1", b"gX"))
+    refused = run(store, "train", "demo@v1", "--target", "target")
+    assert refused.returncode == 2 and "does not match its recorded SHA-256" in refused.stderr
+
+
+# --- finalize and package-verify (Steps 11-12) -------------------------------------------------
+
+
+def toy_csv(path: Path) -> None:
+    rows = ["x,color,y"]
+    for i in range(120):
+        x = (i * 37 % 100) / 10
+        rows.append(f"{x},{('red', 'green', 'blue')[i % 3]},{'hi' if x > 5 else 'lo'}")
+    path.write_text("\n".join(rows) + "\n")
+
+
+def run_with_models(store: Path, models: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return run(store, "--models", str(models), *args)
+
+
+def test_cli_finalize_needs_confirm_then_makes_a_verifiable_sealed_package(tmp_path: Path) -> None:
+    store, models = tmp_path / "store", tmp_path / "models"
+    csv = tmp_path / "toy.csv"
+    toy_csv(csv)
+    assert run(store, "ingest", "toy", str(csv)).returncode == 0
+    base = ("finalize", "toy@v1", "--target", "y", "--algorithms", "logistic_regression,ridge")
+
+    refused = run_with_models(store, models, *base[:-2], "--algorithms", "logistic_regression")
+    assert refused.returncode == 2 and "--confirm" in refused.stderr and not models.exists()
+
+    done = run_with_models(
+        store, models, *base[:-2], "--algorithms", "logistic_regression,random_forest", "--confirm"
+    )
+    assert done.returncode == 0, done.stderr
+    assert "Final test (held-out part" in done.stdout and "read once" in done.stdout
+    assert "positive class: 'lo'" in done.stdout or "positive class" in done.stdout
+    assert "not independent or leakage-proof" in done.stdout
+    ids = [p.name for p in models.iterdir()]
+    assert len(ids) == 1 and ids[0].startswith("m-")
+
+    verified = run_with_models(store, models, "package-verify")
+    assert verified.returncode == 0 and f"PASS  {ids[0]}  [sealed]" in verified.stdout
+
+    (models / ids[0]).chmod(0o755)
+    (models / ids[0] / "model.joblib").chmod(0o644)
+    (models / ids[0] / "model.joblib").write_bytes(b"not a model")
+    broken = run_with_models(store, models, "package-verify", ids[0])
+    assert broken.returncode == 1 and "FAIL" in broken.stdout
+
+
+def test_cli_finalize_reports_a_bad_algorithm_without_a_traceback(tmp_path: Path) -> None:
+    store, models = tmp_path / "store", tmp_path / "models"
+    csv = tmp_path / "toy.csv"
+    toy_csv(csv)
+    run(store, "ingest", "toy", str(csv))
+    bad = run_with_models(
+        store, models, "finalize", "toy@v1", "--target", "y", "--algorithms", "nope", "--confirm"
+    )
+    assert bad.returncode == 2 and "Traceback" not in bad.stderr and "nope" in bad.stderr
+    assert not models.exists()
