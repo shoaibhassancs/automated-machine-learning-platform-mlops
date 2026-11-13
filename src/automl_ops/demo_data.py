@@ -440,7 +440,7 @@ def make_shifted_copy(
         chosen = (
             rng.choice(eligible, size=count, replace=False) if count else np.array([], dtype=int)
         )
-        values = column.to_numpy(dtype=object, na_value=None).copy()
+        values = column.astype(object).to_numpy().copy()
         values[chosen] = cat.category
         shifted[cat.column] = pd.array(values, dtype="string")
         applied["categorical"].append(
