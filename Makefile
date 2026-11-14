@@ -1,4 +1,4 @@
-.PHONY: lint test typecheck check
+.PHONY: lint test typecheck check db-up db-stop api openapi worker
 
 lint:
 	uv run ruff check .
@@ -16,3 +16,22 @@ check: lint typecheck test
 .PHONY: demo-data
 demo-data:
 	uv run python scripts/prepare_demo_data.py
+
+# Local PostgreSQL for the application database (P4-1): needs .env with POSTGRES_PASSWORD.
+# `db-stop` stops the container and keeps its data volume.
+db-up:
+	docker compose up -d --wait postgres
+db-stop:
+	docker compose stop postgres
+
+# Control-plane API (P4-3) on 127.0.0.1:8100. Needs `make db-up` and `scripts/db.py upgrade` first;
+# it refuses to start if the database is unreachable or behind. `make openapi` rewrites
+# docs/openapi-control.json (a test fails if the checked-in file is stale).
+api:
+	uv run python scripts/serve_control.py
+openapi:
+	uv run python scripts/export_openapi.py
+
+# Job worker (P4-4): one process, one job at a time. Needs `make db-up` and the migration head.
+worker:
+	uv run python scripts/worker.py

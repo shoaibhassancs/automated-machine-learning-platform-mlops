@@ -22,21 +22,26 @@ are re-copied only when missing or of the wrong size, and each run gets its
 `platform.logging=complete` tag as its **last** write. The parent is marked complete only after
 every child verifies. A completed job rejects another attempt (`AlreadyTrackedError`).
 
-**Store.** SQLite metadata (`<root>/mlflow.db`) and a local artifact directory (`<root>/artifacts`),
-both explicit. This is the Phase 3 development store, kept separate from the future application
-database. Telemetry is disabled for this process before MLflow is imported.
+**Store.** Two backends behind one `TrackingStore` (P4-2b): SQLite (`<root>/mlflow.db` plus
+`<root>/artifacts`; the default, the tests and the historical archive) or PostgreSQL (MLflow's own
+`mlflow` database on the platform's server, artifacts in `data/mlflow-pg/artifacts`). PostgreSQL is
+set up only by an explicit `mlflow-init`; reads and status checks never create it. Telemetry is
+disabled for this process before MLflow is imported.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import tempfile
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from automl_ops.package import (
     ATTEMPT_FILE,
@@ -55,6 +60,17 @@ TRACKING_FORMAT = 1
 EXPERIMENT = "automl-ops"
 DEFAULT_ROOT = Path("data/mlflow")
 DEFAULT_UI_PORT = 5001  # 5000 is taken by macOS AirPlay Receiver on recent macOS versions
+BACKENDS = ("sqlite", "postgresql")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_PG_ARTIFACT_ROOT = PROJECT_ROOT / "data" / "mlflow-pg" / "artifacts"
+DEFAULT_MLFLOW_DATABASE = "mlflow"
+# MLflow's own schema: runs.artifact_uri is VARCHAR(200) and experiments.artifact_location is
+# VARCHAR(256). PostgreSQL enforces them (SQLite does not). With an explicit experiment location a
+# run's URI is `<location>/<32-character run id>/artifacts`.
+RUN_URI_LIMIT = 200
+EXPERIMENT_LOCATION_LIMIT = 256
+RUN_URI_SUFFIX_LENGTH = len("/") + 32 + len("/artifacts")
+_DATABASE_NAME = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
 PACKAGE_ARTIFACT_DIR = "package"
 PACKAGE_FILES = (MODEL_FILE, MANIFEST_FILE, PARITY_FILE, ATTEMPT_FILE, TEST_RESULT_FILE, SEAL_FILE)
 
@@ -88,6 +104,46 @@ class JobNotFoundError(TrackingError):
     """No such job (or no tracking store yet) for a read-only query."""
 
 
+class ArtifactLocationError(TrackingError):
+    """An artifact location that PostgreSQL would reject (or that disagrees with the store)."""
+
+
+def _dbconfig() -> Any:
+    from automl_ops.db import config  # noqa: PLC0415 - imports SQLAlchemy; keep it lazy
+
+    return config
+
+
+def scrub(text: str) -> str:
+    """Remove the database password (and its URL-encoded form) from a message."""
+    try:
+        secret = _dbconfig().database_url().password
+    except Exception:  # no settings, nothing to hide
+        return text
+    if secret:
+        for variant in {secret, quote(secret, safe="")}:
+            text = text.replace(variant, "***")
+    return text
+
+
+def check_artifact_location(location: str) -> int:
+    """Pre-flight for PostgreSQL: the longest run artifact URI this location would produce.
+
+    Raises `ArtifactLocationError` if that exceeds MLflow's 200-character column (or the location
+    its own 256). Runs nothing and touches nothing, so it can run before any experiment or run
+    exists. Returns the longest run URI length."""
+    base = location.rstrip("/")
+    longest = len(base) + RUN_URI_SUFFIX_LENGTH
+    if longest > RUN_URI_LIMIT or len(location) > EXPERIMENT_LOCATION_LIMIT:
+        raise ArtifactLocationError(
+            f"the artifact location is {len(base)} characters, so a run's artifact URI would be "
+            f"{longest}; MLflow's PostgreSQL schema limits it to {RUN_URI_LIMIT} (the location to "
+            f"at most {RUN_URI_LIMIT - RUN_URI_SUFFIX_LENGTH}). Set a shorter "
+            f"AUTOML_MLFLOW_ARTIFACT_ROOT or use a shorter project path. Location: {base}"
+        )
+    return longest
+
+
 def quiet_environment() -> dict[str, str]:
     """The environment variables every MLflow process of this project must run with."""
     return dict(QUIET_ENVIRONMENT)
@@ -99,28 +155,104 @@ def apply_quiet_environment() -> None:
 
 @dataclass(frozen=True)
 class TrackingStore:
-    """Explicit SQLite database and artifact directory under one root (default `data/mlflow`)."""
+    """Where MLflow keeps its records. Two backends, one implementation:
+
+    * `sqlite` (default; tests and the historical archive): `<root>/mlflow.db` plus
+      `<root>/artifacts`, exactly as in Phase 3.
+    * `postgresql`: MLflow's own database (`mlflow` by default) on the platform's PostgreSQL server,
+      same credentials as `automl_ops.db`; artifacts in `artifact_root` (default
+      `data/mlflow-pg/artifacts`). The connection URL is built on demand and never stored, printed
+      or placed on a command line.
+    """
 
     root: Path = DEFAULT_ROOT
+    backend: str = "sqlite"
+    artifact_root: Path | None = None  # PostgreSQL only; an absolute path
+
+    def __post_init__(self) -> None:
+        if self.backend not in BACKENDS:
+            raise TrackingError(f"unknown tracking backend {self.backend!r}; use one of {BACKENDS}")
+        if self.artifact_root is not None and not self.artifact_root.is_absolute():
+            raise TrackingError("the artifact root must be an absolute path")
+
+    @staticmethod
+    def from_settings(
+        root: Path | None = None,
+        backend: str | None = None,
+        env: dict[str, str] | None = None,
+    ) -> TrackingStore:
+        """The store chosen by the command line, else `AUTOML_MLFLOW_BACKEND` (environment or
+        `.env`), else SQLite. `AUTOML_MLFLOW_ARTIFACT_ROOT` overrides the PostgreSQL root."""
+        settings = _dbconfig().setting
+        chosen = backend or settings("AUTOML_MLFLOW_BACKEND", "sqlite", env)
+        artifact = settings("AUTOML_MLFLOW_ARTIFACT_ROOT", None, env)
+        return TrackingStore(
+            root if root is not None else DEFAULT_ROOT,
+            str(chosen),
+            Path(artifact) if artifact and chosen == "postgresql" else None,
+        )
+
+    @property
+    def database_name(self) -> str:
+        name = str(_dbconfig().setting("AUTOML_MLFLOW_DB_NAME", DEFAULT_MLFLOW_DATABASE))
+        if not _DATABASE_NAME.fullmatch(name):
+            raise TrackingError(f"invalid MLflow database name {name!r}")
+        return name
 
     @property
     def db_path(self) -> Path:
+        if self.backend != "sqlite":
+            raise TrackingError("only the SQLite backend has a database file")
         return self.root.resolve() / "mlflow.db"
 
     @property
     def artifact_path(self) -> Path:
+        if self.backend == "postgresql":
+            return (self.artifact_root or DEFAULT_PG_ARTIFACT_ROOT).resolve()
         return self.root.resolve() / "artifacts"
 
     @property
     def tracking_uri(self) -> str:
-        return f"sqlite:///{self.db_path.as_posix()}"
+        """The backend URI. For PostgreSQL it contains the password: pass it to MLflow in this
+        process only, never print it or put it in a command line."""
+        if self.backend == "sqlite":
+            return f"sqlite:///{self.db_path.as_posix()}"
+        config = _dbconfig()
+        try:
+            url = config.database_url().set(database=self.database_name)
+        except config.DatabaseConfigError as error:
+            raise TrackingError(str(error)) from error
+        return str(url.render_as_string(hide_password=False))
 
     @property
     def artifact_uri(self) -> str:
         return self.artifact_path.as_uri()
 
+    def describe(self) -> str:
+        """A printable description; never contains the password."""
+        if self.backend == "sqlite":
+            return str(self.db_path)
+        config = _dbconfig()
+        try:
+            url = config.database_url().set(database=self.database_name)
+        except config.DatabaseConfigError as error:
+            raise TrackingError(str(error)) from error
+        return f"PostgreSQL {config.describe(url)} (artifacts {self.artifact_path})"
+
+    def exists(self) -> bool:
+        """Is there an initialised store? Never creates anything."""
+        if self.backend == "sqlite":
+            return self.db_path.exists()
+        state = _postgres_state(self)
+        return state.database_exists and state.schema_present
+
     def ui_command(self, port: int = DEFAULT_UI_PORT) -> list[str]:
-        """The explicit command that serves this store on localhost only."""
+        """The explicit command that serves this store on localhost only. For PostgreSQL the
+        backend and artifact locations are *not* arguments (they would expose the password in the
+        process list); `ui_environment()` supplies them."""
+        common = ["--host", "127.0.0.1", "--port", str(port)]
+        if self.backend == "postgresql":
+            return ["mlflow", "server", *common]
         return [
             "mlflow",
             "server",
@@ -128,11 +260,67 @@ class TrackingStore:
             self.tracking_uri,
             "--default-artifact-root",
             self.artifact_uri,
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
+            *common,
         ]
+
+    def ui_environment(self) -> dict[str, str]:
+        """Extra environment for the UI process (PostgreSQL only; contains the password)."""
+        if self.backend != "postgresql":
+            return {}
+        return {
+            "MLFLOW_BACKEND_STORE_URI": self.tracking_uri,
+            "MLFLOW_DEFAULT_ARTIFACT_ROOT": self.artifact_uri,
+        }
+
+
+@dataclass(frozen=True)
+class _PgState:
+    database_exists: bool
+    schema_present: bool
+    revision: str | None
+
+
+def _postgres_state(store: TrackingStore) -> _PgState:
+    """Does the MLflow database exist, and has MLflow created its schema? Creates nothing."""
+    from sqlalchemy import create_engine, text  # noqa: PLC0415
+    from sqlalchemy.exc import SQLAlchemyError  # noqa: PLC0415
+
+    config = _dbconfig()
+    options: dict[str, Any] = {"connect_args": {"connect_timeout": config.CONNECT_TIMEOUT_SECONDS}}
+    try:
+        url = config.database_url()
+        name = store.database_name
+        admin = create_engine(url.set(database="postgres"), isolation_level="AUTOCOMMIT", **options)
+        try:
+            with admin.connect() as connection:
+                found = connection.execute(
+                    text("SELECT 1 FROM pg_database WHERE datname = :name"), {"name": name}
+                ).first()
+        finally:
+            admin.dispose()
+        if found is None:
+            return _PgState(False, False, None)
+        engine = create_engine(url.set(database=name), **options)
+        try:
+            with engine.connect() as connection:
+                present = bool(
+                    connection.execute(
+                        text("SELECT to_regclass('public.alembic_version') IS NOT NULL")
+                    ).scalar_one()
+                )
+                revision = (
+                    connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
+                    if present
+                    else None
+                )
+        finally:
+            engine.dispose()
+        return _PgState(True, present, None if revision is None else str(revision))
+    except (SQLAlchemyError, config.DatabaseConfigError) as error:
+        reason = str(getattr(error, "orig", error)).strip().splitlines()[0]
+        raise TrackingError(
+            scrub(f"cannot reach the PostgreSQL tracking database: {reason}")
+        ) from None
 
 
 @dataclass(frozen=True)
@@ -152,10 +340,16 @@ class JobRecord:
     package_id: str | None = None
     package_dir: Path | None = None
     test_result: dict[str, Any] | None = None
+    extra_tags: dict[str, str] = field(default_factory=dict)  # provenance notes, `platform.*` only
 
     def __post_init__(self) -> None:
         if self.kind not in ("train", "final"):
             raise TrackingError(f"unknown job kind {self.kind!r}")
+        for key, value in self.extra_tags.items():
+            if not key.startswith("platform.") or not isinstance(value, str):
+                raise TrackingError(
+                    f"extra tags must be platform.* names with text values: {key!r}"
+                )
         if self.kind == "train" and self.test_result is not None:
             raise TrackingError("a cross-validation-only job cannot carry a test result")
         if self.kind == "final" and (
@@ -187,6 +381,7 @@ def record_from_training(
     *,
     job_key: str | None = None,
     created_ms: int | None = None,
+    extra_tags: dict[str, str] | None = None,
 ) -> JobRecord:
     """A cross-validation-only record (`train --track`); `training` is a `TrainingResult` dict."""
     return JobRecord(
@@ -199,10 +394,13 @@ def record_from_training(
         training=training,
         libraries=libraries,
         settings=training["settings"],
+        extra_tags=dict(extra_tags or {}),
     )
 
 
-def record_from_package(models_root: Path, package_id: str) -> JobRecord:
+def record_from_package(
+    models_root: Path, package_id: str, extra_tags: dict[str, str] | None = None
+) -> JobRecord:
     """Rebuild a job from a **sealed** package: manifest and test result only, no unpickling.
 
     Refuses an open, spent, unsealed or tampered package (seal hashes are checked first)."""
@@ -235,6 +433,7 @@ def record_from_package(models_root: Path, package_id: str) -> JobRecord:
             package_id=manifest["package_id"],
             package_dir=path,
             test_result=test_result,
+            extra_tags=dict(extra_tags or {}),
         )
     except (KeyError, ValueError, OSError) as error:
         raise TrackingError(
@@ -250,34 +449,80 @@ def record_from_package(models_root: Path, package_id: str) -> JobRecord:
 class _Api:
     """Thin wrapper holding the MLflow client; the only place MLflow names appear."""
 
-    def __init__(self, store: TrackingStore, *, read_only: bool = False) -> None:
+    def __init__(
+        self,
+        store: TrackingStore,
+        *,
+        read_only: bool = False,
+        initialise: bool = False,
+        experiment: bool = True,
+    ) -> None:
         apply_quiet_environment()  # before MLflow is imported
         from mlflow import MlflowClient  # noqa: PLC0415 - lazy so non-tracking commands stay fast
         from mlflow.entities import Metric, Param, RunTag  # noqa: PLC0415
 
         self.read_only = read_only
-        if read_only:
+        if store.backend == "postgresql":
+            if (
+                not initialise
+            ):  # MLflow would create its schema on first use; only `mlflow-init` may
+                state = _postgres_state(store)
+                if not (state.database_exists and state.schema_present):
+                    if read_only:
+                        raise JobNotFoundError(
+                            f"no tracking store: {store.describe()} is not initialised"
+                        )
+                    raise TrackingError(
+                        f"the tracking store {store.describe()} is not initialised: run "
+                        "`uv run python scripts/db.py mlflow-init` first"
+                    )
+            if not read_only:
+                store.artifact_path.mkdir(parents=True, exist_ok=True)
+        elif read_only:
             if not store.db_path.exists():
                 raise JobNotFoundError(f"no tracking store at {store.db_path}")
         else:
             store.root.mkdir(parents=True, exist_ok=True)
             store.artifact_path.mkdir(parents=True, exist_ok=True)
         self.store = store
-        self.client: Any = MlflowClient(tracking_uri=store.tracking_uri)
-        self._metric, self._param, self._tag = Metric, Param, RunTag
-        self.experiment_id = self._experiment()
+        try:
+            self.client: Any = MlflowClient(tracking_uri=store.tracking_uri)
+            self._metric, self._param, self._tag = Metric, Param, RunTag
+            self.experiment_id = self._experiment() if experiment else ""
+        except TrackingError:
+            raise
+        except Exception as error:
+            if store.backend == "postgresql":
+                raise TrackingError(scrub(f"{type(error).__name__}: {error}")) from None
+            raise
 
     def _experiment(self) -> str:
         found = self.client.get_experiment_by_name(EXPERIMENT)
         if found is not None:
             if found.lifecycle_stage != "active":
                 raise TrackingError(f"the MLflow experiment {EXPERIMENT!r} was deleted")
+            if self.store.backend == "postgresql" and not self.read_only:
+                self._check_stored_location(str(found.artifact_location))
             return str(found.experiment_id)
         if self.read_only:
             raise JobNotFoundError(f"the tracking store has no {EXPERIMENT!r} experiment yet")
+        if self.store.backend == "postgresql":
+            check_artifact_location(self.store.artifact_uri)  # before anything is created
         return str(
             self.client.create_experiment(EXPERIMENT, artifact_location=self.store.artifact_uri)
         )
+
+    def _check_stored_location(self, stored: str) -> None:
+        """Run URIs are derived from the experiment's *stored* location, so that is what must fit;
+        and writes only go to the configured location (a moved project would otherwise log into a
+        path that no longer exists)."""
+        check_artifact_location(stored)
+        if stored.rstrip("/") != self.store.artifact_uri.rstrip("/"):
+            raise ArtifactLocationError(
+                f"the store's experiment records the artifact location {stored}, but the "
+                f"configured location is {self.store.artifact_uri} (was the project moved, or "
+                "AUTOML_MLFLOW_ARTIFACT_ROOT changed?). Nothing was written."
+            )
 
     def find(self, job_key: str, role: str, algorithm: str | None = None) -> Any | None:
         clauses = [f"tags.`{T_JOB}` = '{job_key}'", f"tags.`{T_ROLE}` = '{role}'"]
@@ -454,6 +699,10 @@ def _parent_tags(record: JobRecord) -> dict[str, str]:
         tags["platform.package_id"] = record.package_id
     for name, value in sorted(record.libraries.items()):
         tags[f"lib.{name}"] = str(value)
+    for name, value in sorted(record.extra_tags.items()):
+        if name in tags:
+            raise TrackingError(f"extra tag {name!r} would replace a tag the platform sets")
+        tags[name] = value
     return tags
 
 
@@ -465,7 +714,7 @@ def log_job(record: JobRecord, store: TrackingStore) -> TrackedJob:
     except TrackingError:
         raise
     except Exception as error:
-        raise TrackingError(f"{type(error).__name__}: {error}") from error
+        raise TrackingError(scrub(f"{type(error).__name__}: {error}")) from error
 
 
 def _log_job(record: JobRecord, store: TrackingStore) -> TrackedJob:
@@ -820,7 +1069,7 @@ def telemetry_disabled() -> bool:
 
 def tracking_state(store: TrackingStore) -> dict[str, Any]:
     """Counts for a quick look: runs by role and logging state."""
-    if not store.db_path.exists():
+    if not store.exists():
         return {"runs": 0}
     api = _Api(store)
     runs = api.client.search_runs([api.experiment_id], max_results=5000)
@@ -829,3 +1078,434 @@ def tracking_state(store: TrackingStore) -> dict[str, Any]:
         label = f"{run.data.tags.get(T_ROLE)}:{run.data.tags.get(T_STATE)}"
         counts[label] = counts.get(label, 0) + 1
     return {"runs": len(runs), "by_role_and_state": counts}
+
+
+def _create_database_if_missing(store: TrackingStore) -> bool:
+    """Create the (empty) MLflow database if it does not exist. Returns True if it was created."""
+    from sqlalchemy import create_engine, text  # noqa: PLC0415
+    from sqlalchemy.exc import SQLAlchemyError  # noqa: PLC0415
+
+    config = _dbconfig()
+    state = _postgres_state(store)
+    if state.database_exists:
+        return False
+    try:
+        admin = create_engine(
+            config.database_url().set(database="postgres"),
+            isolation_level="AUTOCOMMIT",
+            connect_args={"connect_timeout": config.CONNECT_TIMEOUT_SECONDS},
+        )
+        try:
+            with admin.connect() as connection:  # the name was validated against a strict pattern
+                connection.execute(text(f'CREATE DATABASE "{store.database_name}"'))
+        finally:
+            admin.dispose()
+    except SQLAlchemyError as error:
+        reason = str(getattr(error, "orig", error)).strip().splitlines()[0]
+        raise TrackingError(scrub(f"cannot create the MLflow database: {reason}")) from None
+    return True
+
+
+def initialise_store(store: TrackingStore, *, create_experiment: bool = True) -> dict[str, Any]:
+    """`mlflow-init`: create the PostgreSQL database if needed, let MLflow create its schema, and
+    create the experiment with its (pre-flight checked) artifact location. Idempotent. This is the
+    only code path that may create the store; reads, status checks and `log_job` never do."""
+    if store.backend != "postgresql":
+        raise TrackingError("mlflow-init applies to the PostgreSQL backend only")
+    check_artifact_location(store.artifact_uri)  # before anything is created
+    created = _create_database_if_missing(store)
+    store.artifact_path.mkdir(parents=True, exist_ok=True)
+    _Api(store, initialise=True, experiment=create_experiment)
+    status = store_status(store)
+    status["database_created"] = created
+    return status
+
+
+def store_status(store: TrackingStore) -> dict[str, Any]:
+    """Read-only state of a store: existence, schema revision, experiment, artifact location and
+    the longest run artifact URI against the PostgreSQL limit. Creates nothing."""
+    info: dict[str, Any] = {"backend": store.backend, "store": store.describe()}
+    if store.backend == "sqlite":
+        info["initialised"] = store.exists()
+        return info
+    state = _postgres_state(store)
+    info.update(
+        database=store.database_name,
+        database_exists=state.database_exists,
+        schema_present=state.schema_present,
+        schema_revision=state.revision,
+        initialised=state.database_exists and state.schema_present,
+        configured_artifact_location=store.artifact_uri,
+    )
+    try:
+        info["configured_location_longest_run_uri"] = check_artifact_location(store.artifact_uri)
+        info["configured_location_ok"] = True
+    except ArtifactLocationError as error:
+        info["configured_location_ok"] = False
+        info["configured_location_problem"] = str(error)
+    if not info["initialised"]:
+        return info
+    api = _Api(store, read_only=True, experiment=False)
+    found = api.client.get_experiment_by_name(EXPERIMENT)
+    info["experiment_exists"] = found is not None
+    if found is not None:
+        stored = str(found.artifact_location)
+        info["experiment_artifact_location"] = stored
+        info["location_matches_configuration"] = stored.rstrip("/") == store.artifact_uri.rstrip(
+            "/"
+        )
+        runs = api.client.search_runs([found.experiment_id], max_results=MAX_RUNS)
+        info["runs"] = len(runs)
+        longest = max((len(str(r.info.artifact_uri)) for r in runs), default=0)
+        info["longest_run_uri"] = longest
+        info["run_uri_margin"] = RUN_URI_LIMIT - longest
+    return info
+
+
+def run_ids(job_key: str, store: TrackingStore) -> dict[str, Any]:
+    """The MLflow run ids of a job (for the migration mapping). Read-only."""
+    api = _Api(store, read_only=True)
+    parent = api.find(job_key, "job")
+    if parent is None:
+        raise JobNotFoundError(f"no tracked job {job_key!r}")
+    children = api.client.search_runs(
+        [api.experiment_id],
+        f"tags.`{T_JOB}` = '{job_key}' and tags.`{T_ROLE}` = 'algorithm'",
+        max_results=500,
+    )
+    return {
+        "parent": str(parent.info.run_id),
+        "state": parent.data.tags.get(T_STATE),
+        "children": {str(c.data.tags.get(T_ALGORITHM)): str(c.info.run_id) for c in children},
+    }
+
+
+# --------------------------------------------------------------------------------------------
+# P4-6: the registry mirror (additive; nothing above this line was changed)
+#
+# The platform registry in PostgreSQL is authoritative. These functions keep a *mirror* of it in
+# MLflow's model registry and never decide anything: they read or write exactly what the caller
+# (`automl_ops.registry_mirror`) tells them to. Rules (owner decisions, D-042):
+#   * only platform-owned models (tag `platform.managed=true`) are ever written; a model of the
+#     same name without that tag is a conflict and is never touched;
+#   * the only alias the platform writes is `production`, and only on a platform-owned version;
+#   * MLflow registered models, model versions and runs are never deleted, and no other alias is
+#     removed or moved;
+#   * a version's source is `runs:/<run>/package`, the sealed package logged by `log_job`;
+#     nothing is unpickled and no test data is read.
+# Every function is idempotent: running it again after an interruption finds what is there.
+# --------------------------------------------------------------------------------------------
+
+MIRROR_MANAGED_TAG = "platform.managed"  # on the registered model
+MIRROR_PACKAGE_TAG = "platform.package_id"  # on each version: the sealed package it mirrors
+MIRROR_VERSION_TAG = "platform.registry_version"
+MIRROR_STATUS_TAG = "platform.status"
+MIRROR_SELECTION_TAG = "platform.selection_sha256"
+MIRROR_ALIAS = "production"
+_MIRROR_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+_MIRROR_PACKAGE = re.compile(r"^m-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$")
+_MIRROR_SOURCE = re.compile(r"^runs:/([0-9a-f]{32})/package$")
+ALIAS_ATTEMPTS = 4  # MLflow's alias write is a read-then-insert; concurrent writers can collide
+
+
+class MirrorError(TrackingError):
+    """The mirror could not be read or written (MLflow unreachable, store not ready, ...)."""
+
+
+class MirrorConflict(MirrorError):
+    """Something in MLflow that the platform does not own, or that is ambiguous: never modified."""
+
+
+@dataclass(frozen=True)
+class MirrorVersion:
+    """One MLflow model version, as read. `owned` means it carries the platform's package tag."""
+
+    mlflow_version: str
+    package_id: str | None
+    registry_version: str | None
+    status: str | None
+    selection_sha256: str | None
+    source: str
+    source_ok: bool  # the source's run still has its `package` artifacts
+
+    @property
+    def owned(self) -> bool:
+        return self.package_id is not None
+
+
+@dataclass(frozen=True)
+class MirrorSnapshot:
+    exists: bool
+    owned: bool  # the registered model carries `platform.managed=true`
+    versions: tuple[MirrorVersion, ...] = ()
+    aliases: dict[str, str] = field(default_factory=dict)  # every alias -> MLflow version
+
+
+def _mirror_api(store: TrackingStore, *, read_only: bool) -> _Api:
+    return _Api(store, read_only=read_only, experiment=False)
+
+
+def _mirror_name(name: str) -> str:
+    if not _MIRROR_NAME.fullmatch(name):
+        raise MirrorError(f"{name!r} is not a valid registry model name")
+    return name
+
+
+def _mirror_guard(work: Any) -> Any:
+    """Run one MLflow interaction; anything unexpected becomes a scrubbed `MirrorError`."""
+    try:
+        return work()
+    except TrackingError:
+        raise
+    except Exception as error:
+        raise MirrorError(scrub(f"{type(error).__name__}: {str(error)[:300]}")) from None
+
+
+def _is_missing(error: Exception) -> bool:
+    return getattr(error, "error_code", "") == "RESOURCE_DOES_NOT_EXIST"
+
+
+def mirror_snapshot(store: TrackingStore, name: str) -> MirrorSnapshot:
+    """Read-only: the registered model `name` as MLflow has it. Creates nothing."""
+    _mirror_name(name)
+
+    def work() -> MirrorSnapshot:
+        if store.backend == "sqlite" and not store.db_path.exists():
+            return MirrorSnapshot(False, False)  # nothing there yet; the first write creates it
+        api = _mirror_api(store, read_only=True)
+        client = api.client
+        try:
+            model = client.get_registered_model(name)
+        except Exception as error:
+            if _is_missing(error):
+                return MirrorSnapshot(False, False)
+            raise
+        owned = dict(model.tags or {}).get(MIRROR_MANAGED_TAG) == "true"
+        aliases = {str(k): str(v) for k, v in dict(model.aliases or {}).items()}
+        versions: list[MirrorVersion] = []
+        token: str | None = None
+        while True:
+            page = client.search_model_versions(f"name='{name}'", max_results=200, page_token=token)
+            for mv in page:
+                tags = dict(mv.tags or {})
+                found = _MIRROR_SOURCE.fullmatch(str(mv.source))
+                source_ok = False
+                if found:
+                    try:
+                        source_ok = bool(
+                            client.list_artifacts(found.group(1), PACKAGE_ARTIFACT_DIR)
+                        )
+                    except Exception:
+                        source_ok = False
+                versions.append(
+                    MirrorVersion(
+                        mlflow_version=str(mv.version),
+                        package_id=tags.get(MIRROR_PACKAGE_TAG),
+                        registry_version=tags.get(MIRROR_VERSION_TAG),
+                        status=tags.get(MIRROR_STATUS_TAG),
+                        selection_sha256=tags.get(MIRROR_SELECTION_TAG),
+                        source=str(mv.source),
+                        source_ok=source_ok,
+                    )
+                )
+            token = getattr(page, "token", None)
+            if not token or len(versions) >= 10_000:
+                break
+        versions.sort(key=lambda v: int(v.mlflow_version))
+        return MirrorSnapshot(True, owned, tuple(versions), aliases)
+
+    snapshot: MirrorSnapshot = _mirror_guard(work)
+    return snapshot
+
+
+def mirror_ensure_model(store: TrackingStore, name: str) -> bool:
+    """Create the platform-owned registered model if it is missing; True if it was created. A model
+    of that name that the platform does not own raises `MirrorConflict` and is not touched."""
+    _mirror_name(name)
+
+    def work() -> bool:
+        client = _mirror_api(store, read_only=False).client
+        try:
+            client.create_registered_model(name, tags={MIRROR_MANAGED_TAG: "true"})
+            return True
+        except Exception as error:
+            if getattr(error, "error_code", "") != "RESOURCE_ALREADY_EXISTS":
+                raise
+        model = client.get_registered_model(name)
+        if dict(model.tags or {}).get(MIRROR_MANAGED_TAG) != "true":
+            raise MirrorConflict(
+                f"MLflow already has a registered model named {name!r} that the platform does not "
+                "own; it was not touched"
+            )
+        return False
+
+    created: bool = _mirror_guard(work)
+    return created
+
+
+def mirror_package_run(store: TrackingStore, models_root: Path, package_id: str) -> str:
+    """The MLflow run that holds this sealed package's files, tracking the package first if it is
+    not tracked yet (the existing resumable `log_job`; seal hashes are checked, nothing is
+    unpickled). Returns the run id of the algorithm run that carries the `package` artifacts."""
+    if not _MIRROR_PACKAGE.fullmatch(package_id):
+        raise MirrorError(f"{package_id!r} is not a package id")
+
+    def tracked() -> dict[str, Any] | None:
+        try:
+            found = run_ids(package_id, store)
+        except JobNotFoundError:
+            return None
+        return found if found["state"] == COMPLETE else None
+
+    def work() -> str:
+        found = tracked()
+        if found is None:
+            try:
+                log_job(record_from_package(models_root, package_id), store)
+            except AlreadyTrackedError:
+                pass
+            found = tracked()
+            if found is None:
+                raise MirrorError(f"package {package_id} could not be tracked completely")
+        client = _mirror_api(store, read_only=True).client
+        holders = [
+            run
+            for run in found["children"].values()
+            if any(a.path == PACKAGE_ARTIFACT_DIR for a in client.list_artifacts(run))
+        ]
+        if len(holders) != 1:
+            raise MirrorError(
+                f"package {package_id}: expected one tracked run holding its files, found "
+                f"{len(holders)}"
+            )
+        return str(holders[0])
+
+    run: str = _mirror_guard(work)
+    return run
+
+
+def mirror_ensure_version(
+    store: TrackingStore,
+    name: str,
+    *,
+    package_id: str,
+    run_id: str,
+    registry_version: int,
+    status: str,
+    selection_sha256: str,
+) -> tuple[str, bool]:
+    """The MLflow version that mirrors `package_id`, created if there is none. Found by its package
+    tag, so a retry after an interruption never creates a second one. Two or more versions with
+    that tag, or one whose source is not the expected run, raise `MirrorConflict` (nothing is
+    deleted)."""
+    _mirror_name(name)
+    if not _MIRROR_PACKAGE.fullmatch(package_id):
+        raise MirrorError(f"{package_id!r} is not a package id")
+    source = f"runs:/{run_id}/{PACKAGE_ARTIFACT_DIR}"
+
+    def work() -> tuple[str, bool]:
+        client = _mirror_api(store, read_only=False).client
+        found = list(
+            client.search_model_versions(
+                f"name='{name}' and tag.`{MIRROR_PACKAGE_TAG}`='{package_id}'"
+            )
+        )
+        if len(found) > 1:
+            raise MirrorConflict(
+                f"MLflow has {len(found)} versions of {name!r} for package {package_id}; "
+                "none was changed or deleted"
+            )
+        if found:
+            if str(found[0].source) != source:
+                raise MirrorConflict(
+                    f"the MLflow version for package {package_id} has an unexpected source; "
+                    "it was not changed"
+                )
+            return str(found[0].version), False
+        created = client.create_model_version(
+            name,
+            source,
+            run_id=run_id,
+            tags={  # given at creation: the version is never visible without its package tag
+                MIRROR_PACKAGE_TAG: package_id,
+                MIRROR_VERSION_TAG: str(registry_version),
+                MIRROR_STATUS_TAG: status,
+                MIRROR_SELECTION_TAG: selection_sha256,
+            },
+        )
+        return str(created.version), True
+
+    result: tuple[str, bool] = _mirror_guard(work)
+    return result
+
+
+def mirror_set_tags(
+    store: TrackingStore, name: str, mlflow_version: str, tags: dict[str, str]
+) -> list[str]:
+    """Set the given tags on a platform version where they differ; returns the keys changed."""
+    _mirror_name(name)
+    allowed = {MIRROR_VERSION_TAG, MIRROR_STATUS_TAG, MIRROR_SELECTION_TAG}
+    if not set(tags) <= allowed:
+        raise MirrorError("only the platform's own version tags can be set")
+
+    def work() -> list[str]:
+        client = _mirror_api(store, read_only=False).client
+        current = dict(client.get_model_version(name, mlflow_version).tags or {})
+        if MIRROR_PACKAGE_TAG not in current:
+            raise MirrorConflict(f"version {mlflow_version} of {name!r} is not a platform version")
+        changed = []
+        for key, value in tags.items():
+            if current.get(key) != value:
+                client.set_model_version_tag(name, mlflow_version, key, value)
+                changed.append(key)
+        return changed
+
+    result: list[str] = _mirror_guard(work)
+    return result
+
+
+def mirror_set_production_alias(
+    store: TrackingStore, name: str, mlflow_version: str | None, *, current: str | None = None
+) -> bool:
+    """Point the `production` alias at `mlflow_version`, or remove it when None. This is the only
+    alias the platform writes. `current` is the holder the caller last read: if the alias has since
+    moved to a version the caller did not expect, nothing is changed (`MirrorConflict`). Returns
+    True if something changed. MLflow's alias write can collide with a concurrent writer, so it is
+    retried a few times and then read back."""
+    _mirror_name(name)
+
+    def holder(client: Any) -> str | None:
+        value = dict(client.get_registered_model(name).aliases or {}).get(MIRROR_ALIAS)
+        return None if value is None else str(value)
+
+    def work() -> bool:
+        client = _mirror_api(store, read_only=False).client
+        now = holder(client)
+        if now == mlflow_version:
+            return False
+        if now != current and current is not None:
+            raise MirrorConflict(
+                f"the {MIRROR_ALIAS!r} alias of {name!r} moved while it was being updated; "
+                "it was not changed"
+            )
+        last: Exception | None = None
+        for attempt in range(ALIAS_ATTEMPTS):
+            try:
+                if mlflow_version is None:
+                    client.delete_registered_model_alias(name, MIRROR_ALIAS)
+                else:
+                    client.set_registered_model_alias(name, MIRROR_ALIAS, mlflow_version)
+                last = None
+                break
+            except Exception as error:
+                last = error
+                time.sleep(0.1 * (attempt + 1))
+        if holder(client) != mlflow_version:
+            raise MirrorError(
+                f"the {MIRROR_ALIAS!r} alias of {name!r} could not be set"
+                + (f" ({type(last).__name__})" if last else "")
+            )
+        return True
+
+    result: bool = _mirror_guard(work)
+    return result

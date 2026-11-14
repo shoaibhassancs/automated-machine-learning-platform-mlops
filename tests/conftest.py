@@ -95,3 +95,92 @@ def is_root() -> bool:
 
 def read_only(path: Path) -> bool:
     return not path.stat().st_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)
+
+
+# -- P4-4: a throwaway, migrated PostgreSQL database with datasets for the job tests ----
+# Databases are named `automl_test_*` and dropped afterwards. If the server is unreachable the
+# tests using these fixtures are skipped, which is NOT RUN, never a pass.
+
+import secrets  # noqa: E402
+from collections.abc import Iterator  # noqa: E402
+
+from sqlalchemy import Engine, create_engine, text  # noqa: E402
+from sqlalchemy.engine import URL  # noqa: E402
+
+from automl_ops.dataset_store import FileDatasetStore  # noqa: E402
+from automl_ops.db import migrate  # noqa: E402
+from automl_ops.db.catalog import CatalogedDatasetStore  # noqa: E402
+from automl_ops.db.config import DatabaseConfigError, database_url, make_engine  # noqa: E402
+
+
+def _admin_engine(url: URL) -> Engine:
+    return create_engine(
+        url.set(database="postgres"),
+        isolation_level="AUTOCOMMIT",
+        connect_args={"connect_timeout": 3},
+    )
+
+
+@pytest.fixture(scope="module")
+def pg_server() -> URL:
+    try:
+        url = database_url()
+    except DatabaseConfigError as error:
+        pytest.skip(f"NOT RUN: no database settings ({error})")
+    try:
+        with _admin_engine(url).connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception as error:
+        pytest.skip(f"NOT RUN: PostgreSQL not reachable ({type(error).__name__}; make db-up)")
+    return url
+
+
+@pytest.fixture
+def pg_url(pg_server: URL) -> Iterator[URL]:
+    """The URL of a fresh throwaway database (migrated to the head)."""
+    name = f"automl_test_{secrets.token_hex(6)}"
+    admin = _admin_engine(pg_server)
+    with admin.connect() as connection:
+        connection.execute(text(f'CREATE DATABASE "{name}"'))
+    url = pg_server.set(database=name)
+    setup = make_engine(url)
+    migrate.upgrade(setup)
+    setup.dispose()
+    try:
+        yield url
+    finally:
+        with admin.connect() as connection:
+            connection.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+        admin.dispose()
+
+
+@pytest.fixture
+def pg_engine(pg_url: URL) -> Iterator[Engine]:
+    engine = make_engine(pg_url)
+    try:
+        yield engine
+    finally:
+        engine.dispose()
+
+
+@dataclass(frozen=True, eq=False)
+class JobEnv:
+    engine: Engine
+    url: URL
+    root: Path
+    store_root: Path
+    models: Path
+    store: FileDatasetStore
+
+
+@pytest.fixture
+def job_env(pg_engine: Engine, pg_url: URL, tmp_path: Path) -> JobEnv:
+    """Datasets `toy` (classification) and `toyreg` (regression), stored and catalogued."""
+    store_root = tmp_path / "store"
+    catalogued = CatalogedDatasetStore(FileDatasetStore(store_root), pg_engine)
+    catalogued.ingest("toy", toy_bytes("classification"), source_filename="toy.csv")
+    catalogued.ingest("toyreg", toy_bytes("regression"), source_filename="toyreg.csv")
+    assert catalogued.unsynced == []
+    return JobEnv(
+        pg_engine, pg_url, tmp_path, store_root, tmp_path / "models", FileDatasetStore(store_root)
+    )

@@ -24,13 +24,13 @@ are done and verified, and **Gate 1 is closed** (owner-approved 2026-11-13). **C
 and verified (owner-approved complete)**. **Chunk 2B (Steps 11-12: selection, the single final test,
 model packaging) is done and verified**, and **Gate 2 is closed** (owner-approved, including the
 two-process concurrent-finalization check, D-022). **Chunk 3A (Steps 13-14: MLflow setup and
-logging of training runs through `tracking.py`) is done and verified, and Gate 3A is closed** (owner-approved; no further changes to 3A). **Chunk 3B (Steps 15-16: experiment history and CV-only comparison, and the read-only reproducibility check) is implemented and verified and awaits the owner's Gate 3 review**; the model registry and everything after it are not started. See `DECISIONS.md` and `BUILD_LOG.md`. Runtime dependencies: pandas, numpy, pandera,
-scikit-learn, joblib, mlflow. Dev: pytest, ruff, mypy, pandas-stubs.
-Code: `demo_data.py` (Step 2), `ingest.py` and `dataset_store.py` (Step 3), `profile.py` and
+logging of training runs through `tracking.py`) is done and verified, and Gate 3A is closed** (owner-approved; no further changes to 3A). **Chunk 3B (Steps 15-16: experiment history and CV-only comparison, and the read-only reproducibility check) is done and verified, and Gate 3 is closed** (owner-approved 2026-11-13); **Phase 4 is approved as chunks P4-1 to P4-10 (D-028); P4-1 (PostgreSQL foundation and dataset catalog, D-029) is closed; P4-2b (MLflow tracking on PostgreSQL, D-033/D-034) is complete and its gate is approved (D-035); P4-3 (control-plane skeleton and Dataset API, D-036) is complete and its gate is approved (D-037; the httpx/Starlette test-client deprecation warning is a known, non-blocking limitation); **P4-4 (training jobs, worker process, Job API; D-038) is complete and its gate is approved (D-039); the real `automl_ops` database was seen at revision 0003 in a read-only check on 2026-11-14 (the owner runs every upgrade themselves; I never do); **P4-5 (PostgreSQL-only model registry; D-040, `docs/registry.md`) is complete and its gate is approved (D-041); P4-6 onward are not started.** SQLite is still the default tracking backend (the old store `data/mlflow` is the untouched archive).** See `DECISIONS.md` and `BUILD_LOG.md`. Runtime dependencies: pandas, numpy, pandera,
+scikit-learn, joblib, mlflow, psycopg[binary], sqlalchemy, alembic, fastapi, uvicorn, starlette, pydantic, python-multipart. Dev: pytest, ruff, mypy, pandas-stubs, httpx.
+Code: `registry.py` (P4-5: statuses, rollback, append-only events enforced by migration 0003 triggers), `jobs.py`, `worker.py`, `runner.py` (shared by CLI and worker) and `job_tracking.py` (P4-4: `docs/jobs.md`; `make worker`; settings `AUTOML_JOBS_MLFLOW_DIR`, `AUTOML_MODELS_DIR`; job tracking is opt-in), `api_control/` and `dataset_reports.py` (P4-3: Dataset API on 127.0.0.1:8100, `docs/api.md`), `db/` (P4-1: config, models, migrate, catalog; `docs/database.md`), `demo_data.py` (Step 2), `ingest.py` and `dataset_store.py` (Step 3), `profile.py` and
 `validate.py` (4A), `task.py` (5), `explore.py` (6), `schema.py` (4B), `pipeline.py` (7),
 `algorithms.py` (8), `evaluate.py` (10), `train.py` (9), `selection.py` and `finalize.py` (11),
 `package.py` (12), `tracking.py` (13-14, plus the 3B read side; the only module that imports `mlflow`), `compare.py` and `reproduce.py` (15-16, no MLflow), `hashing.py`, and
-the scripts `prepare_demo_data.py`, `datasets.py`, `mlflow_smoke.py` and `mlflow_ui.py`. Demo data (UCI Adult and Abalone, CC BY 4.0) is prepared by
+the scripts `prepare_demo_data.py`, `datasets.py`, `db.py`, `mlflow_smoke.py`, `mlflow_ui.py`, `serve_control.py`, `worker.py` and `export_openapi.py`. Demo data (UCI Adult and Abalone, CC BY 4.0) is prepared by
 `make demo-data` into git-ignored `data/`; see `docs/data.md`. Dataset versions live in git-ignored
 `data/store/` (`docs/ingestion.md`); profile, validate, task, explore and schema results are computed
 on demand and never stored (`docs/profiling.md`, `docs/task-config.md`, `docs/exploration.md`,
@@ -41,7 +41,7 @@ packages live in git-ignored `data/models/`; only sealed packages load. Tracking
 `track-package`, `docs/tracking.md`) logs to a git-ignored SQLite + local-artifact MLflow store in
 `data/mlflow/`, only after a package is sealed; it is resumable and never touches test rows. `jobs`, `job`, `compare` and `reproduce` (`docs/reproducibility.md`) are read-only: `compare` uses CV numbers only; `reproduce` re-runs CV from the record, never reads or scores the test part and writes nothing. scikit-learn has no type information, so mypy has a narrow override for
 `sklearn.*` only. Native thread pools are capped at 2 in `automl_ops/__init__.py`. Next planned work
-(Phase 4) needs the owner's approval and a proposal first. The cross-job test-set reuse policy is
+(P4-2 onward) needs the owner's approval first; each chunk is proposed, approved and gated. The cross-job test-set reuse policy is
 **still an open decision**.
 
 ## Working process (approval gates)
@@ -152,6 +152,15 @@ Work in **chunks**: a phase, or a group of steps, sized by where the owner's inp
   (`MLFLOW_DISABLE_TELEMETRY=true`, set by `tracking.py` and `mlflow_ui.py`).
   `jobs|job|compare|reproduce` (Steps 15-16) read the MLflow records; `reproduce` exits 0 reproduced, 1 not
   reproduced, 2 cannot run, and never reads the held-out test part.
+- MLflow tracking backends (P4-2b, `docs/tracking.md`): SQLite is the default; PostgreSQL (database `mlflow`,
+  artifacts `data/mlflow-pg/artifacts`, max 157-character location) only via `--mlflow-backend postgresql` or
+  `AUTOML_MLFLOW_BACKEND` and after `scripts/db.py mlflow-init`; `mlflow-status` is read-only. Never delete,
+  move or modify `data/mlflow` (the archive) or `data/backups/`. `scripts/tracking_migrate.py` did the migration.
+- `make api` starts the control-plane API (127.0.0.1:8100; needs PostgreSQL at the migration head; `AUTOML_API_PORT`, `AUTOML_UI_ORIGIN`); `make openapi` regenerates `docs/openapi-control.json` (a test fails if it is stale).
+- `make db-up` / `make db-stop` run the application PostgreSQL (`compose.yaml`, 127.0.0.1:55432, local
+  image only, password in git-ignored `.env`). `uv run python scripts/db.py upgrade|status|check|sync`
+  (migrations run only on `upgrade`; `sync` catalogs the file store and never changes files). DB tests
+  are marked `postgres` and report NOT RUN (skipped) when the server is unreachable.
 - Data-reading policy: cells are read as text; only an empty cell is missing; NA-like text and
   values with leading zeros (`007`) keep their original text and are reported, never converted.
   Task-suitability checks (task type, class sizes) live in `task.py` (Step 5), not in profile/validate.

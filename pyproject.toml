@@ -11,6 +11,14 @@ dependencies = [
     "pandera>=0.36.0",
     "scikit-learn>=1.9.1",
     "mlflow>=3.18.0",
+    "psycopg[binary]>=3.2",
+    "sqlalchemy>=2.1.8",
+    "alembic>=1.20.1",
+    "fastapi>=0.162.5",
+    "uvicorn>=0.54.0",
+    "starlette>=1.10.0",
+    "pydantic>=2.14.3",
+    "python-multipart>=0.0.33",
 ]
 
 [build-system]
@@ -19,6 +27,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "mypy>=2.4.1",
     "pandas-stubs>=3.1.0.261029",
     "pytest>=9.2.0",
@@ -47,3 +56,4 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = ["postgres: needs the real PostgreSQL server (make db-up); reported as skipped if unreachable"]

@@ -1,0 +1,33 @@
+# Local development database (BUILD_PLAN Step 17, chunk P4-1). Services only: this file starts
+# PostgreSQL and nothing else; the full stack is assembled in Phase 6.
+#
+#   cp .env.example .env   # then set POSTGRES_PASSWORD
+#   make db-up             # docker compose up -d --wait postgres
+#
+# Bound to 127.0.0.1 only. Port 55432 avoids the Homebrew server (5432) and other projects'
+# containers. The image is used as already present locally (pull_policy: never), so starting
+# it contacts no registry; if it is missing, Compose fails instead of downloading.
+name: automl-ops
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    pull_policy: never
+    container_name: automl-ops-postgres
+    environment:
+      POSTGRES_USER: automl
+      POSTGRES_DB: automl_ops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - automl_ops_pgdata:/var/lib/postgresql/data
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U automl -d automl_ops"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  automl_ops_pgdata:

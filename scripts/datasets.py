@@ -33,8 +33,9 @@ selects the best algorithm from the cross-validation results alone, freezes that
 on the training part, scores it **once** on the held-out test part and writes a sealed model package
 under `data/models/` (`--models`); it refuses to run without `--confirm`, and exit code 2 also
 covers a refused or failed finalization. `package-verify` re-checks packages (exit 1 if any fails).
-`--track` (Steps 13-14) logs the job to the local MLflow store (`data/mlflow`, `--mlflow-dir`)
-through `automl_ops.tracking`: after the package is sealed for `finalize`, from the
+`--track` (Steps 13-14) logs the job to the MLflow store (default: SQLite in `data/mlflow`,
+`--mlflow-dir`; `--mlflow-backend postgresql` or AUTOML_MLFLOW_BACKEND selects the PostgreSQL store,
+P4-2b) through `automl_ops.tracking`: after the package is sealed for `finalize`, from the
 cross-validation results for `train`. If tracking fails the package stays sealed and the exit code
 is 3 ("tracking pending"); `track-package` then logs, or finishes logging, a sealed package without
 retraining or reading any test row. See docs/tracking.md.
@@ -56,13 +57,21 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
-
-from automl_ops.algorithms import AlgorithmError, algorithms_for
+from automl_ops.algorithms import AlgorithmError
 from automl_ops.compare import CompareError, compare_jobs
+from automl_ops.dataset_reports import (
+    ReportError,
+    build_task_config,
+    class_counts_for,
+    explore_payload,
+    parse_excluded,
+    profile_payload,
+    task_payload,
+    validation_payload,
+)
 from automl_ops.dataset_store import DatasetStoreError, FileDatasetStore
 from automl_ops.explore import explore_frame
-from automl_ops.finalize import DatasetInfo, FinalizeError, finalize
+from automl_ops.finalize import FinalizeError
 from automl_ops.ingest import IngestError, read_limited
 from automl_ops.package import (
     PackageError,
@@ -89,6 +98,7 @@ from automl_ops.reproduce import (
     sealed_manifest_selection_sha,
     sealed_test_result,
 )
+from automl_ops.runner import RunSpec, resolve_requests, run_pipeline, tracking_record
 from automl_ops.schema import (
     SchemaError,
     SchemaSpec,
@@ -96,14 +106,12 @@ from automl_ops.schema import (
     check_csv_bytes,
     profile_for_schema,
 )
-from automl_ops.selection import SelectionError, freeze_selection, select_model
+from automl_ops.selection import SelectionError
 from automl_ops.task import (
     TASK_TYPES,
     TaskConfig,
     TaskReport,
     check_task_config,
-    class_counts,
-    suggest_task,
 )
 from automl_ops.tracking import (
     AlreadyTrackedError,
@@ -115,21 +123,24 @@ from automl_ops.tracking import (
     log_job,
     read_job,
     record_from_package,
-    record_from_training,
 )
 from automl_ops.train import (
-    AlgorithmRequest,
     ProgressEvent,
     TrainingError,
     TrainingResult,
     TrainSettings,
-    run_training,
 )
 from automl_ops.validate import validate
 
 
 class CliError(Exception):
     """Bad command-line input (reported as `ERROR:` with exit code 2)."""
+
+
+def _tracking_store(args: argparse.Namespace) -> TrackingStore:
+    """The tracking store: SQLite under --mlflow-dir (default), or PostgreSQL when selected by
+    --mlflow-backend or AUTOML_MLFLOW_BACKEND."""
+    return TrackingStore.from_settings(args.mlflow_dir, args.mlflow_backend)
 
 
 def _describe_upload(result_encoding: str, delimiter: str, reencoded: bool) -> str:
@@ -220,7 +231,7 @@ def format_profile(vp: VersionProfile) -> str:
 def cmd_profile(store: FileDatasetStore, args: argparse.Namespace) -> int:
     vp = profile_version(store, args.ref)
     if args.json:
-        print(json.dumps(vp.to_dict(), indent=2, sort_keys=True, allow_nan=False))
+        print(json.dumps(profile_payload(vp), indent=2, sort_keys=True, allow_nan=False))
     else:
         print(format_profile(vp))
     return 0
@@ -230,7 +241,7 @@ def cmd_validate(store: FileDatasetStore, args: argparse.Namespace) -> int:
     vp = profile_version(store, args.ref)
     report = validate(vp.profile, target=args.target)
     if args.json:
-        payload = {"dataset_ref": vp.version.ref, "sha256": vp.version.sha256, **report.to_dict()}
+        payload = validation_payload(vp.version, vp.profile, args.target)
         print(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False))
         return 0 if report.ok else 1
     target = f", target {args.target!r}" if args.target else ", no target given"
@@ -244,24 +255,14 @@ def cmd_validate(store: FileDatasetStore, args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
-def _excluded(raw: str | None) -> tuple[str, ...]:
-    if not raw:
-        return ()
-    return tuple(name.strip() for name in raw.split(",") if name.strip())
-
-
 def _task_config(profile: DatasetProfile, args: argparse.Namespace) -> TaskConfig:
     """The configuration from the command line; without --task, the suggested task is used."""
-    task = args.task
-    if task is None:
-        suggestion = suggest_task(profile, args.target)
-        if suggestion is None:
-            raise CliError(
-                f"cannot suggest a task for target {args.target!r} (it does not exist or has no "
-                "values); pass --task"
-            )
-        task = suggestion.task
-    return TaskConfig(target=args.target, task=task, excluded=_excluded(args.exclude))
+    try:
+        return build_task_config(
+            profile, args.target, args.task, parse_excluded(args.exclude), hint="pass --task"
+        )
+    except ReportError as error:
+        raise CliError(str(error)) from error
 
 
 def _print_task_report(report: TaskReport, ref: str, features: tuple[str, ...]) -> None:
@@ -287,23 +288,11 @@ def cmd_task(store: FileDatasetStore, args: argparse.Namespace) -> int:
     report = check_task_config(profile, class_counts_for(frame, config), config)
     features = config.feature_columns(profile)
     if args.json:
-        payload = {
-            "dataset_ref": version.ref,
-            "sha256": version.sha256,
-            **report.to_dict(),
-            "feature_columns": list(features),
-        }
+        payload = task_payload(version, frame, profile, config)
         print(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False))
     else:
         _print_task_report(report, version.ref, features)
     return 0 if report.ok else 1
-
-
-def class_counts_for(frame: pd.DataFrame, config: TaskConfig) -> dict[str, int]:
-    """Class counts for a classification config whose target exists; otherwise none."""
-    if config.task == "classification" and config.target in frame.columns:
-        return class_counts(frame, config.target)
-    return {}
 
 
 def _print_explore(data: dict[str, Any], ref: str) -> None:
@@ -333,7 +322,7 @@ def cmd_explore(store: FileDatasetStore, args: argparse.Namespace) -> int:
     config = _task_config(profile, args) if args.target else None
     data = explore_frame(frame, profile, config)
     if args.json:
-        payload = {"dataset_ref": version.ref, "sha256": version.sha256, **data}
+        payload = explore_payload(version, frame, profile, config)
         print(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False))
     else:
         _print_explore(data, version.ref)
@@ -460,7 +449,7 @@ EXIT_TRACKING_PENDING = 3
 def _track(record: JobRecord, args: argparse.Namespace) -> tuple[TrackedJob | None, str | None]:
     """Log a record; returns (tracked job, None) or (None, the reason it is pending)."""
     try:
-        return log_job(record, TrackingStore(args.mlflow_dir)), None
+        return log_job(record, _tracking_store(args)), None
     except TrackingError as error:
         return None, str(error)
 
@@ -480,43 +469,36 @@ def _tracking_payload(tracked: TrackedJob | None, problem: str | None) -> dict[s
 def _print_tracking(
     tracked: TrackedJob | None, problem: str | None, args: argparse.Namespace
 ) -> None:
-    store = TrackingStore(args.mlflow_dir)
+    store = _tracking_store(args)
     if tracked is None:
         print(f"\nTRACKING PENDING: {problem}", file=sys.stderr)
         return
     verb = "resumed and completed" if tracked.resumed else "logged"
     print(
         f"\ntracking: {verb} job {tracked.job_key} ({len(tracked.child_run_ids)} algorithm "
-        f"runs) in {store.db_path}"
+        f"runs) in {store.describe()}"
+    )
+
+
+def _run_spec(kind: str, config: TaskConfig, args: argparse.Namespace) -> RunSpec:
+    """The run the command line asked for (algorithms, split and fold settings)."""
+    keys = [k.strip() for k in args.algorithms.split(",")] if args.algorithms else None
+    return RunSpec(
+        kind,
+        config,
+        tuple(resolve_requests(config.task, keys)),
+        TrainSettings(test_fraction=args.test_fraction, seed=args.seed, folds=args.folds),
+        getattr(args, "selection_metric", None) if kind == "final" else None,
     )
 
 
 def cmd_train(store: FileDatasetStore, args: argparse.Namespace) -> int:
     version, frame = read_version_frame(store, args.ref)
     config = _task_config(profile_frame(frame), args)
-    keys = (
-        [k.strip() for k in args.algorithms.split(",") if k.strip()]
-        if args.algorithms
-        else [a.key for a in algorithms_for(config.task)]
-    )
-    settings = TrainSettings(test_fraction=args.test_fraction, seed=args.seed, folds=args.folds)
-    result = run_training(
-        frame,
-        config,
-        [AlgorithmRequest(k) for k in keys],
-        settings,
-        progress=None if args.json else _print_progress,
-    )
-    tracked, problem = (
-        _track(
-            record_from_training(
-                result.to_dict(), DatasetInfo.from_version(version).to_dict(), library_versions()
-            ),
-            args,
-        )
-        if args.track
-        else (None, None)
-    )
+    spec = _run_spec("train", config, args)
+    outcome = run_pipeline(frame, version, spec, progress=None if args.json else _print_progress)
+    result = outcome.training
+    tracked, problem = _track(tracking_record(outcome, None), args) if args.track else (None, None)
     if args.json:
         payload = {"dataset_ref": version.ref, "sha256": version.sha256, **result.to_dict()}
         if args.track:
@@ -567,36 +549,23 @@ def cmd_finalize(store: FileDatasetStore, args: argparse.Namespace) -> int:
         )
     version, frame = read_version_frame(store, args.ref)
     config = _task_config(profile_frame(frame), args)
-    keys = (
-        [k.strip() for k in args.algorithms.split(",") if k.strip()]
-        if args.algorithms
-        else [a.key for a in algorithms_for(config.task)]
+    spec = _run_spec("final", config, args)
+    # One training run feeds the selection, the freeze, the refit and the package (runner.py).
+    outcome = run_pipeline(
+        frame, version, spec, args.models, progress=None if args.json else _print_progress
     )
-    settings = TrainSettings(test_fraction=args.test_fraction, seed=args.seed, folds=args.folds)
-    # One training run feeds the selection, the freeze, the refit and the package.
-    training = run_training(
-        frame,
-        config,
-        [AlgorithmRequest(k) for k in keys],
-        settings,
-        progress=None if args.json else _print_progress,
+    training, report, frozen, result = (
+        outcome.training,
+        outcome.selection,
+        outcome.frozen,
+        outcome.final,
     )
-    report = select_model(training, args.selection_metric)
-    frozen = freeze_selection(training, report)
-    result = finalize(
-        frame,
-        config,
-        training,
-        frozen,
-        DatasetInfo.from_version(version),
-        args.models,
-        confirm_final_test=True,
-    )
+    assert report is not None and frozen is not None and result is not None
     tracked, problem = (None, None)
     if args.track:
         # Only after the package is sealed: tracking can never change or spend a package.
         try:
-            tracked, problem = _track(record_from_package(args.models, result.package_id), args)
+            tracked, problem = _track(tracking_record(outcome, args.models), args)
         except TrackingError as error:
             problem = str(error)
     if args.json:
@@ -632,7 +601,7 @@ def cmd_track_package(store: FileDatasetStore, args: argparse.Namespace) -> int:
     (JSON): no retraining, no data rows, no unpickling."""
     record = record_from_package(args.models, args.package_id)
     try:
-        tracked = log_job(record, TrackingStore(args.mlflow_dir))
+        tracked = log_job(record, _tracking_store(args))
     except AlreadyTrackedError as error:
         raise CliError(str(error)) from error
     except TrackingError as error:
@@ -656,7 +625,7 @@ def _num(value: Any, digits: int = 4) -> str:
 def cmd_jobs(store: FileDatasetStore, args: argparse.Namespace) -> int:
     """History of tracked jobs, newest first. Read-only."""
     jobs = list_jobs(
-        TrackingStore(args.mlflow_dir),
+        _tracking_store(args),
         kind=args.kind,
         task=args.task,
         dataset=args.dataset,
@@ -692,7 +661,7 @@ def cmd_jobs(store: FileDatasetStore, args: argparse.Namespace) -> int:
 def cmd_job(store: FileDatasetStore, args: argparse.Namespace) -> int:
     """One job's full record. The recorded test result (finalized jobs only) is shown here, with
     its limitation text, and nowhere else."""
-    job = read_job(args.job_key, TrackingStore(args.mlflow_dir))
+    job = read_job(args.job_key, _tracking_store(args))
     if args.json:
         payload = {
             "job_key": job.job_key,
@@ -765,7 +734,7 @@ def cmd_job(store: FileDatasetStore, args: argparse.Namespace) -> int:
 
 def cmd_compare(store: FileDatasetStore, args: argparse.Namespace) -> int:
     """Cross-validation comparison of two or more jobs. Read-only; no test result is used."""
-    tracking = TrackingStore(args.mlflow_dir)
+    tracking = _tracking_store(args)
     try:
         result = compare_jobs([read_job(k, tracking) for k in args.job_keys], args.metric)
     except CompareError as error:
@@ -821,7 +790,7 @@ def _print_report(report: ReproductionReport) -> None:
 def cmd_reproduce(store: FileDatasetStore, args: argparse.Namespace) -> int:
     """Re-run a tracked job's cross-validation from its record and compare. Writes nothing and
     never reads the held-out test part. Exit 0 reproduced, 1 not reproduced, 2 cannot run."""
-    job = read_job(args.job_key, TrackingStore(args.mlflow_dir))
+    job = read_job(args.job_key, _tracking_store(args))
     ref = job.dataset.get("ref")
     if not ref:
         raise CliError("the job record names no dataset version")
@@ -886,7 +855,14 @@ def main(argv: list[str] | None = None) -> int:
         "--mlflow-dir",
         type=Path,
         default=Path("data/mlflow"),
-        help="MLflow tracking store: SQLite database + artifacts (default data/mlflow)",
+        help="MLflow SQLite store folder: database + artifacts (default data/mlflow; the archive)",
+    )
+    parser.add_argument(
+        "--mlflow-backend",
+        choices=("sqlite", "postgresql"),
+        default=None,
+        help="tracking backend (default: AUTOML_MLFLOW_BACKEND from the environment or .env, "
+        "else sqlite). postgresql uses the `mlflow` database; see docs/tracking.md",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 

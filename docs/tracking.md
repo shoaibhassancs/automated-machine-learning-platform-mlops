@@ -16,23 +16,82 @@ uv run python scripts/datasets.py compare KEY_A KEY_B         # Step 15: CV-only
 uv run python scripts/datasets.py reproduce KEY               # Step 16: re-run CV and compare
 ```
 
-`--mlflow-dir` (before the command name) changes the store folder; the default is `data/mlflow/`
-(git-ignored). Without `--track` nothing is written to it and MLflow is never imported.
+`--mlflow-dir` (before the command name) changes the SQLite store folder; the default is
+`data/mlflow/` (git-ignored); `--mlflow-backend postgresql` selects the PostgreSQL store. Without
+`--track` nothing is written and MLflow is never imported.
 
-## The store (Phase 3 development store)
+## The stores: SQLite (default, archive, tests) and PostgreSQL (P4-2b)
 
-* Metadata: **SQLite**, `data/mlflow/mlflow.db`. Artifacts: a local folder, `data/mlflow/artifacts/`.
-  Both paths are passed explicitly (`sqlite:////abs/path/mlflow.db`, `file:///abs/path/artifacts`),
-  nothing relies on MLflow's implicit `./mlruns`.
-* One experiment, `automl-ops`, created with that artifact location.
-* This database is **separate from the future application database** (PostgreSQL, Phase 4). No
-  migration or integration between the two is built or decided here.
-* The UI is started by hand with `scripts/mlflow_ui.py`, which runs
-  `mlflow server --backend-store-uri <sqlite> --default-artifact-root <dir> --host 127.0.0.1
-  --port 5001`. Port 5001 because macOS AirPlay Receiver can hold 5000. `--print-command` shows the
-  exact command and environment without starting anything.
-* The files under `data/mlflow/` contain the same private material as `data/models/` (the model and
-  the 25 parity rows of training data). Keep the folder private; it is git-ignored.
+One `TrackingStore` class, two backends. **SQLite stays the default**; PostgreSQL is selected
+explicitly with `--mlflow-backend postgresql` (before the command name) or `AUTOML_MLFLOW_BACKEND=
+postgresql` in the environment or the git-ignored `.env`. Nothing switches by itself.
+
+| | SQLite (default) | PostgreSQL |
+| --- | --- | --- |
+| metadata | `data/mlflow/mlflow.db` (`--mlflow-dir`) | database `mlflow` on the platform's PostgreSQL server (same credentials as `docs/database.md`; MLflow owns its schema and migrations; separate from `automl_ops`) |
+| artifacts | `data/mlflow/artifacts/` | `data/mlflow-pg/artifacts/` (override: `AUTOML_MLFLOW_ARTIFACT_ROOT`, an absolute path) |
+| created by | the first write | **only** `uv run python scripts/db.py mlflow-init` (idempotent). Reads, status checks and `--track` never create the database, schema or experiment. |
+| used for | the historical archive, the tests, anything not yet moved | the platform's tracking from P4-2b on, once you choose it |
+
+* Both paths are passed to MLflow explicitly; nothing relies on its implicit `./mlruns`. One
+  experiment, `automl-ops`, is created with its artifact location.
+* `uv run python scripts/db.py mlflow-status` (read-only) shows the schema revision, the experiment,
+  its recorded artifact location, whether that matches the configured one, the number of runs, the
+  longest run URI and the margin to the limit below.
+* **The artifact URI limit.** MLflow's schema stores `runs.artifact_uri` in a `VARCHAR(200)`.
+  PostgreSQL enforces that (SQLite does not). A run's URI is `<experiment artifact location>/<32
+  character run id>/artifacts`, so the location may be at most **157** characters. Before any
+  experiment or run is created on PostgreSQL the location is checked (`tracking.check_artifact_
+  location`); an existing experiment is checked by its *stored* location, and a write is refused if
+  that differs from the configured location (for example after the project folder was moved; reads
+  still work). On this checkout the default location gives a longest run URI of **165** (35 to
+  spare). The limit does not apply to SQLite, whose behaviour is unchanged.
+* **The UI** is started by hand with `scripts/mlflow_ui.py [--backend postgresql]`, port 5001
+  (5000 can be held by macOS AirPlay Receiver). For SQLite it runs `mlflow server --backend-store-uri
+  <sqlite> --default-artifact-root <dir> --host 127.0.0.1 --port 5001`. For PostgreSQL the backend
+  URI (which holds the password) and the artifact root are given in the server's *environment*
+  (`MLFLOW_BACKEND_STORE_URI`, `MLFLOW_DEFAULT_ARTIFACT_ROOT`), not as arguments, so the password is
+  not in the process list. `--print-command` shows the command and the variable *names* only.
+* **Passwords:** the PostgreSQL URL is built on demand, held only inside the MLflow client of the
+  process, never stored in an object that prints, and removed from tracking error messages.
+* The files under `data/mlflow*/` contain the same private material as `data/models/` (the model
+  and the 25 parity rows of training data). Keep them private; they are git-ignored.
+
+## The historical SQLite archive and the migration (P4-2b)
+
+`data/mlflow/` (SQLite database plus artifacts) is the **archive** of the Phase 3 history. It stays
+where it is, unmodified (its stored artifact URIs are absolute paths into it, so it must not be
+moved or renamed). Read it any time with explicit selection:
+
+```bash
+uv run python scripts/datasets.py --mlflow-backend sqlite jobs        # or just: jobs (SQLite is the default)
+uv run python scripts/datasets.py --mlflow-backend sqlite --mlflow-dir data/mlflow job KEY
+uv run python scripts/datasets.py --mlflow-backend postgresql jobs    # the PostgreSQL store
+```
+
+`scripts/tracking_migrate.py` (`backup`, `plan`, `relog`, `rerun`, `verify`) did the move; see its
+docstring. The PostgreSQL records are **new records, not the original MLflow history**: they carry
+provenance tags (`platform.origin`, `platform.migration=P4-2b`, and `platform.source_store` or
+`platform.replaces_job_key`), the originals do not.
+
+| original job (archive) | kind | PostgreSQL job | origin |
+| --- | --- | --- | --- |
+| `m-20261113T050754Z-bd711371` | finalized (Abalone) | **same key** | `relogged-from-package` |
+| `m-20261113T050822Z-aa7bf39b` | finalized (Adult) | **same key** | `relogged-from-package` |
+| `t-20261113T050838Z-a5c37b8d` | CV-only (Abalone, seed 42, 5 folds) | `t-20261113T073505Z-b8d179ab` | `rerun-from-archive` |
+| `t-20261113T053314Z-49dd0ba3` | CV-only (Abalone, seed 7, 3 folds) | `t-20261113T073507Z-a5750c05` | `rerun-from-archive` |
+
+Run ids for every job, original and new, are in `data/mlflow-pg/migration/mapping.json` and in
+`DECISIONS.md` (D-034). A re-run job is a fresh run of the same configuration (bit-identical numbers
+on this machine, verified), not the original run. A backup of the archive taken before the migration
+is in `data/backups/mlflow-sqlite-20261113T073432Z/` (with `MANIFEST.json`).
+
+**Rollback / not switching:** nothing uses the PostgreSQL store unless you select it. To go back,
+remove `AUTOML_MLFLOW_BACKEND` from `.env` (or do not pass `--mlflow-backend postgresql`); the
+archive, the backup, the sealed packages and the dataset store are untouched. The PostgreSQL
+database and `data/mlflow-pg/` are kept for inspection; discarding them is a manual step that
+needs your explicit decision (`DROP DATABASE mlflow` and removing that folder); nothing resets them
+automatically.
 
 ## What a job looks like in MLflow
 
@@ -95,7 +154,8 @@ MLflow telemetry is off in every process this project starts: `MLFLOW_DISABLE_TE
 
 * Two processes logging the *same* job at the same moment are not coordinated (single-user tool).
 * SQLite is a single-writer development store, not a multi-user one.
-* MLflow's server mode, the model registry and aliases, remote artifact stores and PostgreSQL are not
-  used here (registry: Steps 17 and 20).
+* MLflow's server mode and remote artifact stores are not used here. The model registry and the
+  `production` alias are used only by the opt-in registry mirror (P4-6, `docs/registry.md`), through
+  additive `mirror_*` functions at the end of `tracking.py`; nothing above them was changed.
 * The tracking record is a copy of what the sealed package says; the package stays the source of
   truth. A logged copy is checked against the package seal in the real-data demo, not on every run.
