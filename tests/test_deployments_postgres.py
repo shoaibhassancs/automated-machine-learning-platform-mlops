@@ -383,5 +383,5 @@ def test_migration_0005_goes_down_and_up_again(job_env: JobEnv) -> None:
             )
         ).all()
     assert functions == [] and tables == []
-    assert migrate.upgrade(job_env.engine).current == "0006"
+    assert migrate.upgrade(job_env.engine).current == "0007"
     assert migrate.check(job_env.engine).ok

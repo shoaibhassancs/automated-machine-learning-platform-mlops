@@ -32,6 +32,8 @@ def test_the_serving_app_does_not_load_mlflow_or_the_control_plane_app() -> None
     assert "mlflow" not in modules and "automl_ops.tracking" not in modules
     assert "automl_ops.api_control.app" not in modules
     assert "automl_ops.registry_mirror" not in modules and "automl_ops.worker" not in modules
+    for monitoring in ("monitor", "monitoring", "reference"):  # P4-9 stays out of serving
+        assert f"automl_ops.{monitoring}" not in modules
     assert "automl_ops.api_serving.runtime" in modules
 
 

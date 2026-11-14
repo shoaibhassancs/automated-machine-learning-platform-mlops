@@ -37,6 +37,7 @@ Datasets are addressed by name and version number (`abalone@v1` is `/datasets/ab
 | `GET /registry/sync`, `GET\|POST /models/{name}/sync`, `GET /models/{name}/mirror/check`, `POST /models/{name}/reconcile` | The opt-in MLflow mirror of the registry: standing, sync, read-only check, explicit audited reconcile (P4-6, `docs/registry.md`) |
 | `POST /deployments`, `GET /deployments[/active\|/{id}]`, `POST /deployments/{id}/switch`, `POST /deployments/rollback`, `POST /deployments/{id}/undeploy` | Which registered version is live, its history, and the serving app's state after each change (P4-7, `docs/serving.md`) |
 | `GET /deployments/{id}/performance`, `GET /deployments/{id}/feedback` | Live performance from labelled predictions only, with the offline summary shown separately; the label history (P4-8, `docs/serving.md`). Labels are submitted to the serving app's `POST /feedback` |
+| `POST\|GET /models/{name}/versions/{n}/reference`, `POST /deployments/{id}/monitor`, `GET /deployments/{id}/monitoring\|/reports`, `GET /reports/{id}`, `GET /alerts[/{id}]`, `POST /alerts/{id}/acknowledge\|/resolve` | Drift reference samples, on-demand monitoring runs and reports, alerts and their audit trail (P4-9, `docs/monitoring.md`) |
 
 `task-check` is **stateless**: it stores nothing (D-029 removed the `task_configs` table, so the old
 `PUT .../task` of ARCHITECTURE §5 does not exist; the task configuration will travel in the
@@ -85,6 +86,26 @@ server log.
    upload body = the 50 MB CSV limit **plus 64 KiB** multipart allowance (the file itself is held to
    exactly the ingest limit); JSON bodies 1 MiB. The body is cut off at the limit, so nothing larger
    is spooled to disk or held in memory.
+
+## Pagination, consistency and quality checks (P4-10, Step 26)
+
+- **One contract for the lists that can grow:** `GET /jobs`, `/deployments`, `/deployments/{id}/reports`,
+  `/deployments/{id}/feedback` and `/alerts` take `limit` (at most 100) and `before_id` and return
+  `next_before_id` (newest first). `GET /jobs/{id}` and `GET /models/{name}/events` page forward with
+  `after_seq`.
+- **Lists that are deliberately not paged** (bounded in a single-user setup; a new unpaged list fails a test
+  until it is added here): `/algorithms` (a fixed catalogue), `/datasets` (reads the file store),
+  `/models` (one row per model) and `/models/{name}/versions` (one model's versions).
+- **Tests** (`tests/test_api_quality.py`) check on both exported OpenAPI files that every operation has a
+  summary and a unique id, that every error response uses the one error shape (only `/health` may also answer
+  503 with its health body), that the paged lists share the contract above, and that the serving surface is
+  exactly the six documented operations. A runtime sweep sends unknown, malformed and empty input to **every**
+  operation of both apps (over 300 requests on the control plane): never a 500, every error an envelope, and
+  nothing is written.
+- **Coverage gaps, not hidden:** the sweep sends bad input, not every valid combination (those are in the
+  per-area tests); the paths with a nonexistent id are covered, a full authorization model is not (there is
+  none, by design); timing and memory of the biggest allowed windows were measured only on the demo data
+  (`docs/simulator.md`), not at the limits.
 
 ## Concurrency and memory
 

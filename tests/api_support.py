@@ -23,7 +23,7 @@ from automl_ops.db.migrate import DbStatus
 PORT = 8100
 BASE = f"http://127.0.0.1:{PORT}"
 UI_ORIGIN = "http://localhost:5173"
-HEAD = "0006"
+HEAD = "0007"
 CURRENT = DbStatus(current=HEAD, head=HEAD, pending=(), known=True)
 
 

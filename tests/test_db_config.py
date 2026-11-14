@@ -67,15 +67,24 @@ def test_an_explicit_url_is_used_but_must_be_postgresql() -> None:
 
 def test_there_is_one_migration_head_and_a_linear_history() -> None:
     scripts = ScriptDirectory(str(migrate.MIGRATIONS))
-    assert scripts.get_heads() == ["0006"] == [migrate.head_revision()]
+    assert scripts.get_heads() == ["0007"] == [migrate.head_revision()]
     revisions = list(scripts.walk_revisions())
-    assert [r.revision for r in revisions] == ["0006", "0005", "0004", "0003", "0002", "0001"]
-    assert revisions[0].down_revision == "0005"
-    assert revisions[1].down_revision == "0004"
-    assert revisions[2].down_revision == "0003"
-    assert revisions[3].down_revision == "0002"
-    assert revisions[4].down_revision == "0001"
-    assert revisions[5].down_revision is None
+    assert [r.revision for r in revisions] == [
+        "0007",
+        "0006",
+        "0005",
+        "0004",
+        "0003",
+        "0002",
+        "0001",
+    ]
+    assert revisions[0].down_revision == "0006"
+    assert revisions[1].down_revision == "0005"
+    assert revisions[2].down_revision == "0004"
+    assert revisions[3].down_revision == "0003"
+    assert revisions[4].down_revision == "0002"
+    assert revisions[5].down_revision == "0001"
+    assert revisions[6].down_revision is None
 
 
 def test_the_models_declare_exactly_the_catalog_job_and_registry_tables() -> None:
@@ -93,6 +102,10 @@ def test_the_models_declare_exactly_the_catalog_job_and_registry_tables() -> Non
         "deployments",
         "predictions",
         "feedback",
+        "reference_samples",
+        "monitoring_reports",
+        "alerts",
+        "alert_events",
     }
     assert tables["datasets"] == {"id", "name", "created_at"}
     # identity, shape, column *names* and provenance; no column can hold cell values or file bytes

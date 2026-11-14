@@ -26,7 +26,7 @@ from automl_ops.api_control.schemas import (
     ReasonRequest,
     ServingReportModel,
 )
-from automl_ops.api_serving.app import label_model
+from automl_ops.api_serving.schemas import label_model
 from automl_ops.deployments import (
     AlreadyDeployed,
     DeploymentActive,

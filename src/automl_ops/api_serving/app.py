@@ -28,11 +28,11 @@ from automl_ops.api_serving.schemas import (
     FeedbackResponse,
     HealthResponse,
     InputColumn,
-    LabelModel,
     ModelInfo,
     PredictionItem,
     PredictRequest,
     PredictResponse,
+    label_model,
 )
 from automl_ops.api_serving.settings import MAX_ROWS, ServingSettings
 from automl_ops.db.config import make_engine
@@ -41,7 +41,6 @@ from automl_ops.feedback import (
     FeedbackError,
     FeedbackUnavailable,
     InvalidTrueValue,
-    LabelRow,
     PredictionNotFound,
     ReferenceMismatch,
 )
@@ -153,19 +152,6 @@ async def _handler_feedback(_: Any, exc: Exception) -> Any:
     assert isinstance(exc, FeedbackError)
     return errors.envelope(
         _FEEDBACK_STATUS.get(type(exc), 409), exc.code, str(exc), exc.details or None
-    )
-
-
-def label_model(row: LabelRow) -> LabelModel:
-    return LabelModel(
-        id=row.id,
-        prediction_id=row.prediction_id,
-        deployment_id=row.deployment_id,
-        model_version=row.model_version,
-        true_value=row.true_value,
-        created_at=row.created_at.isoformat(),
-        prediction=row.prediction,
-        is_simulated=row.is_simulated,
     )
 
 

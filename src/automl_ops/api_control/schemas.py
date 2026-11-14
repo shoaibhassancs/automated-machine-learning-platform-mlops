@@ -692,3 +692,115 @@ class LivePerformance(Strict):
         description="The stored offline final-test summary: a different thing, shown separately."
     )
     notes: list[str]
+
+
+# --------------------------------------------------------------------------------------------
+# Monitoring: reference samples, drift reports, alerts (P4-9)
+# --------------------------------------------------------------------------------------------
+
+TrafficScope = Literal["real", "simulated"]
+
+
+class ReferenceModel(Strict):
+    id: int
+    model: str
+    version: int
+    package_id: str
+    dataset_ref: str = Field(description="The training dataset version the sample was drawn from.")
+    dataset_sha256: str
+    train_sha256: str = Field(
+        description="SHA-256 of the training row positions (never test rows)."
+    )
+    seed: int
+    train_rows: int
+    sample_rows: int
+    sample_sha256: str = Field(description="SHA-256 of the stored sample and its predictions.")
+    created_at: str
+    created: bool | None = Field(
+        default=None, description="True: made by this call. False: it already existed."
+    )
+
+
+class ThresholdOverrides(Strict):
+    alpha: float | None = Field(default=None, gt=0, le=1)
+    js_distance: float | None = Field(default=None, gt=0, le=1)
+    feature_share: float | None = Field(default=None, gt=0, le=1)
+    performance_drop: float | None = Field(default=None, gt=0, le=1)
+    min_rows: int | None = Field(default=None, ge=5, le=100_000)
+    min_labelled: int | None = Field(default=None, ge=1, le=100_000)
+    window: int | None = Field(default=None, ge=5, le=5000)
+
+
+class MonitorRequest(Strict):
+    scope: TrafficScope = Field(
+        default="real",
+        description="Which traffic to monitor. Real and simulated traffic are never mixed.",
+    )
+    thresholds: ThresholdOverrides = Field(default_factory=ThresholdOverrides)
+
+
+class ReportModel(Strict):
+    id: int
+    deployment_id: int
+    reference_id: int
+    scope: TrafficScope
+    status: Literal["ok", "insufficient_data", "failed"] = Field(
+        description=(
+            "`ok`: a drift verdict was reached. `insufficient_data`: too few rows, no verdict. "
+            "`failed`: the run broke (see `error`); never a success."
+        )
+    )
+    window_rows: int
+    window_start: str | None
+    window_end: str | None
+    thresholds: dict[str, Any]
+    summary: dict[str, Any] | None = Field(
+        description="Feature drift, dataset-drift share, prediction drift, performance, rules."
+    )
+    error: str | None
+    started_at: str
+    finished_at: str
+
+
+class ReportList(Strict):
+    deployment_id: int
+    reports: list[ReportModel]
+    next_before_id: int | None
+
+
+class MonitoringStatus(Strict):
+    deployment_id: int
+    reference_id: int | None = Field(description="Null: the version has no reference sample yet.")
+    latest_real: ReportModel | None
+    latest_simulated: ReportModel | None
+    unresolved_alerts: list[dict[str, Any]]
+
+
+class AlertEventModel(Strict):
+    id: int
+    action: Literal["opened", "reoccurred", "acknowledged", "resolved", "auto_resolved"]
+    report_id: int | None
+    reason: str | None
+    created_at: str
+
+
+class AlertModel(Strict):
+    id: int
+    deployment_id: int
+    rule: Literal["drifted_feature_share", "prediction_shift", "performance_drop"]
+    scope: TrafficScope
+    severity: Literal["warning", "critical"]
+    status: Literal["open", "acknowledged", "resolved"]
+    details: dict[str, Any]
+    first_report_id: int
+    last_report_id: int
+    occurrences: int
+    created_at: str
+    updated_at: str
+    resolved_at: str | None
+    events: list[AlertEventModel] | None = None
+
+
+class AlertList(Strict):
+    alerts: list[AlertModel]
+    next_before_id: int | None

@@ -1,4 +1,4 @@
-.PHONY: lint test typecheck check db-up db-stop api openapi worker serve
+.PHONY: lint test typecheck check db-up db-stop api openapi worker serve simulate e2e
 
 lint:
 	uv run ruff check .
@@ -39,3 +39,11 @@ serve:
 # Job worker (P4-4): one process, one job at a time. Needs `make db-up` and the migration head.
 worker:
 	uv run python scripts/worker.py
+
+# Traffic simulator (P4-10): normal, shifted, then normal demo traffic against `make api` + `make serve`
+# (needs a deployed model); see docs/simulator.md. `make e2e` runs the whole backend story and WRITES rows
+# to the database the stack uses; see scripts/e2e_demo.py.
+simulate:
+	uv run python scripts/simulate_traffic.py demo abalone
+e2e:
+	uv run python scripts/e2e_demo.py abalone

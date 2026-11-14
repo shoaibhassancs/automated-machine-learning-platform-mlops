@@ -67,6 +67,15 @@ DEPLOYMENT_STATES = ("active", "ended")
 DEPLOYMENT_ACTIONS = ("deploy", "switch", "rollback")
 DEPLOYABLE_STATES = ("staging", "production")  # registry statuses a version may be deployed from
 
+# P4-9: monitoring. Reference samples and reports are immutable; alerts move forward only and every
+# move is an append-only event (migration 0007 triggers).
+TRAFFIC_SCOPES = ("real", "simulated")
+REPORT_STATES = ("ok", "insufficient_data", "failed")
+ALERT_RULES = ("drifted_feature_share", "prediction_shift", "performance_drop")
+ALERT_SEVERITIES = ("warning", "critical")
+ALERT_STATES = ("open", "acknowledged", "resolved")
+ALERT_ACTIONS = ("opened", "reoccurred", "acknowledged", "resolved", "auto_resolved")
+
 
 def _in(column: str, values: tuple[str, ...]) -> str:
     return f"{column} IN ({', '.join(repr(v) for v in values)})"
@@ -421,4 +430,133 @@ class Feedback(Base):
     deployment_id: Mapped[int] = mapped_column(ForeignKey("deployments.id", ondelete="RESTRICT"))
     model_version: Mapped[int] = mapped_column(Integer)  # copied from the prediction, checked
     true_value: Mapped[str] = mapped_column(Text)  # class label, or the canonical number text
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ReferenceSample(Base):
+    """The drift reference of one model version (P4-9): a deterministic sample of its *training*
+    rows, with the model's predictions on them. Immutable; separate from the dataset and package."""
+
+    __tablename__ = "reference_samples"
+    __table_args__ = (
+        UniqueConstraint("version_id", name="version"),
+        CheckConstraint("sample_rows > 0 AND sample_rows <= train_rows", name="sample_size"),
+        CheckConstraint(f"sample_sha256 ~ '{SHA256_REGEX}'", name="sample_sha256_format"),
+        CheckConstraint(f"dataset_sha256 ~ '{SHA256_REGEX}'", name="dataset_sha256_format"),
+        CheckConstraint(f"train_sha256 ~ '{SHA256_REGEX}'", name="train_sha256_format"),
+        CheckConstraint(f"package_id ~ '{PACKAGE_ID_REGEX}'", name="package_id_format"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, Identity(always=True), primary_key=True)
+    version_id: Mapped[int] = mapped_column(ForeignKey("model_versions.id", ondelete="RESTRICT"))
+    package_id: Mapped[str] = mapped_column(String(64))
+    dataset_ref: Mapped[str] = mapped_column(Text)
+    dataset_sha256: Mapped[str] = mapped_column(String(64))
+    train_sha256: Mapped[str] = mapped_column(String(64))  # of the training row positions
+    seed: Mapped[int] = mapped_column(Integer)
+    train_rows: Mapped[int] = mapped_column(Integer)
+    sample_rows: Mapped[int] = mapped_column(Integer)
+    columns: Mapped[list[Any]] = mapped_column(JSONB)
+    rows: Mapped[list[Any]] = mapped_column(JSONB)
+    predictions: Mapped[list[Any]] = mapped_column(JSONB)
+    sample_sha256: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MonitoringReport(Base):
+    """One monitoring run (P4-9). A failed run is recorded as failed, never as a success."""
+
+    __tablename__ = "monitoring_reports"
+    __table_args__ = (
+        CheckConstraint(_in("scope", TRAFFIC_SCOPES), name="scope"),
+        CheckConstraint(_in("status", REPORT_STATES), name="status"),
+        CheckConstraint("window_rows >= 0", name="window_rows_not_negative"),
+        CheckConstraint(
+            "(status = 'failed' AND error IS NOT NULL) OR "
+            "(status <> 'failed' AND error IS NULL AND summary IS NOT NULL)",
+            name="outcome_consistent",
+        ),
+        Index("ix_monitoring_reports_deployment_id", "deployment_id", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    deployment_id: Mapped[int] = mapped_column(ForeignKey("deployments.id", ondelete="RESTRICT"))
+    reference_id: Mapped[int] = mapped_column(
+        ForeignKey("reference_samples.id", ondelete="RESTRICT")
+    )
+    scope: Mapped[str] = mapped_column(String(10))
+    status: Mapped[str] = mapped_column(String(18))
+    window_rows: Mapped[int] = mapped_column(Integer)
+    window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    thresholds: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    summary: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class Alert(Base):
+    """An alert for one unresolved condition (P4-9): at most one unresolved alert per
+    (deployment, rule, traffic scope); a recurrence updates it, a new one follows a resolution."""
+
+    __tablename__ = "alerts"
+    __table_args__ = (
+        CheckConstraint(_in("rule", ALERT_RULES), name="rule"),
+        CheckConstraint(_in("scope", TRAFFIC_SCOPES), name="scope"),
+        CheckConstraint(_in("severity", ALERT_SEVERITIES), name="severity"),
+        CheckConstraint(_in("status", ALERT_STATES), name="status"),
+        CheckConstraint("occurrences >= 1", name="occurrences_positive"),
+        CheckConstraint(
+            "(status = 'resolved') = (resolved_at IS NOT NULL)", name="resolved_consistent"
+        ),
+        Index(
+            "uq_alerts_one_unresolved",
+            "deployment_id",
+            "rule",
+            "scope",
+            unique=True,
+            postgresql_where=text("status <> 'resolved'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    deployment_id: Mapped[int] = mapped_column(ForeignKey("deployments.id", ondelete="RESTRICT"))
+    rule: Mapped[str] = mapped_column(String(24))
+    scope: Mapped[str] = mapped_column(String(10))
+    severity: Mapped[str] = mapped_column(String(8))
+    status: Mapped[str] = mapped_column(String(12), server_default="open")
+    details: Mapped[dict[str, Any]] = mapped_column(JSONB)  # from the latest report that fired it
+    first_report_id: Mapped[int] = mapped_column(
+        ForeignKey("monitoring_reports.id", ondelete="RESTRICT")
+    )
+    last_report_id: Mapped[int] = mapped_column(
+        ForeignKey("monitoring_reports.id", ondelete="RESTRICT")
+    )
+    occurrences: Mapped[int] = mapped_column(Integer, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AlertEvent(Base):
+    """Append-only audit of every alert state change."""
+
+    __tablename__ = "alert_events"
+    __table_args__ = (
+        CheckConstraint(_in("action", ALERT_ACTIONS), name="action"),
+        CheckConstraint(
+            "reason IS NULL OR char_length(reason) BETWEEN 1 AND 500", name="reason_length"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    alert_id: Mapped[int] = mapped_column(ForeignKey("alerts.id", ondelete="RESTRICT"))
+    action: Mapped[str] = mapped_column(String(14))
+    report_id: Mapped[int | None] = mapped_column(
+        ForeignKey("monitoring_reports.id", ondelete="RESTRICT"), nullable=True
+    )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

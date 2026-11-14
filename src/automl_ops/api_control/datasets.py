@@ -49,8 +49,10 @@ from automl_ops.deployments import DeploymentRepository
 from automl_ops.feedback import FeedbackRepository
 from automl_ops.ingest import IngestError
 from automl_ops.jobs import JobRepository
+from automl_ops.monitoring import MonitoringRepository
 from automl_ops.profile import profile_frame as _profile_frame
 from automl_ops.profile import profile_version, read_version_frame
+from automl_ops.reference import ReferenceService
 from automl_ops.registry import RegistryRepository
 from automl_ops.registry_mirror import Mirror
 from automl_ops.serving_client import ServingClient
@@ -75,6 +77,8 @@ class Context:
         None  # P4-7; None: the deployment endpoints answer 503
     )
     feedback: FeedbackRepository | None = None  # P4-8; None: the performance endpoints answer 503
+    monitoring: MonitoringRepository | None = None  # P4-9; None: monitoring endpoints answer 503
+    references: ReferenceService | None = None  # P4-9
     serving: ServingClient | None = None  # P4-7; None: no serving app to notify
     worker_state: Callable[[], str] = lambda: "unknown"  # "running" | "stopped" | "unknown"
     tracking_problem: Callable[[], str | None] = lambda: None  # why track=true cannot be honoured

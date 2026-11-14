@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr
 
 from automl_ops.api_serving.settings import MAX_ROWS
+from automl_ops.feedback import LabelRow
 
 
 class Strict(BaseModel):
@@ -124,4 +125,17 @@ class FeedbackResponse(Strict):
     label: LabelModel
     created: bool = Field(
         description="False: this exact label had already been recorded; nothing was written."
+    )
+
+
+def label_model(row: LabelRow) -> LabelModel:
+    return LabelModel(
+        id=row.id,
+        prediction_id=row.prediction_id,
+        deployment_id=row.deployment_id,
+        model_version=row.model_version,
+        true_value=row.true_value,
+        created_at=row.created_at.isoformat(),
+        prediction=row.prediction,
+        is_simulated=row.is_simulated,
     )

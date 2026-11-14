@@ -609,7 +609,7 @@ def test_migration_0006_keeps_existing_predictions_and_goes_down_and_up(rig: Rig
             text("SELECT 1 FROM information_schema.tables WHERE table_name = 'feedback'")
         ).all()
     assert left == [] and tables == []
-    assert migrate.upgrade(rig.engine).current == "0006"
+    assert migrate.upgrade(rig.engine).current == "0007"
     assert migrate.check(rig.engine).ok
     assert label_rows(rig) == []  # labels were dropped with the table; predictions were kept
     assert label(c, body["predictions"][0]["prediction_id"], "pos").status_code == 200

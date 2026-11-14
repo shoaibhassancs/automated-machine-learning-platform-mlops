@@ -1530,3 +1530,161 @@ limit (no retention yet). Feedback and live performance are P4-8. Not run on Lin
 PostgreSQL server stop was not exercised (connections to a throwaway database were refused instead). A stale model can
 answer for a change committed just before a database outage. The test-set reuse decision is still **open**; no counters
 or restrictions added. P4-8 not started.
+
+## D-044 — P4-7 gate approved; P4-8 feedback and live performance (built and verified; stopped at the gate)
+
+**Date:** 2026-11-14. **Type/status:** owner decision (P4-7 approved, P4-8 go-ahead, one continuous run) and implementation, verified; awaiting owner gate approval.
+
+The real `automl_ops` database was checked read-only first: revision 0005 as expected. I applied no migration; **0006 is
+pending and the owner runs `scripts/db.py upgrade`**. No dependency, lockfile or pin change.
+
+**Decisions I made (provisional, for the owner to confirm).** (1) `POST /feedback` lives on the serving app (as ARCHITECTURE
+lists it) and needs only PostgreSQL, so late labels work after a deployment ended. (2) One label per prediction, append-only:
+the same label again is a no-op (200, `created: false`); a different label is refused (409) and the first stands; there is
+no way to edit a label (a wrong one needs an owner decision). (3) Optional `deployment_id` / `model_version` in the request
+are checked against the prediction (409 on mismatch); the database independently refuses a label whose deployment or version
+differs from its prediction's. (4) Classification labels must be a model class given as text; regression labels a finite
+number, stored canonically. The classes come from the prediction's own stored probabilities, in sorted order, which is the
+platform's class order (`train` sorts the classes; no dedicated test compares it with the manifest, but the metric tests use
+the real served probabilities and match an independent calculation). (5) Live
+performance is a read-only control-plane endpoint, per deployment, computed on demand with `evaluate.py` (Step 10 code);
+default scope is real traffic only, simulated traffic is reported separately. (6) Fewer than 30 labelled predictions (parameter
+`min_labelled`) gives a status and counts, no metrics. (7) The offline final-test summary stored with the version is returned
+separately as `offline_reference`, never mixed or subtracted. (8) At most the 50,000 most recent labels are scored and the
+response says so.
+
+**Built.** Migration 0006 (`feedback`: unique per prediction, deployment and version checked by a trigger, no update, delete
+or truncate); `feedback.py` (repository, validation, performance); serving `POST /feedback`; control-plane
+`GET /deployments/{id}/performance` and `GET /deployments/{id}/feedback`; schemas; `docs/serving.md`, `docs/api.md`; both
+OpenAPI files regenerated.
+
+**Verification.** Full `make check` on the final code: ruff pass, format pass (143 files), mypy strict (124 files) no issues,
+**1072 passed, 2 warnings, 8 min 54 s, none skipped** (real PostgreSQL and real sealed packages ran). New: 28 tests in
+`test_feedback_postgres.py`, plus updated revision pins and OpenAPI paths. They cover: valid classification and regression
+labels; invalid ids, classes, types, NaN/Infinity, missing and extra fields; duplicate and conflicting labels; wrong
+deployment and model version; late labels staying with their deployment; database constraints and immutability;
+a failed write leaving predictions and labels intact; unreachable database (503); 8 simultaneous identical and conflicting
+submissions (one row); labels arriving while performance is read; live metrics equal to an independent calculation
+(sklearn / numpy) on a known labelled batch, classification and regression, unlabelled rows excluded; insufficient, no-label
+and no-prediction statuses; undefined ROC-AUC with its reason; real/simulated scopes; offline reference kept separate;
+truncation note; label paging; API errors and local request rules; persistence across a fresh serving runtime and control app;
+no file under the models or store folders is opened by feedback or performance (a spy test) and the module's imports are
+only deployments, evaluate and profile; migration 0006 down and up keeping existing predictions. OpenAPI current; protected
+fingerprints and `uv.lock` / `pyproject.toml` hashes identical before and after; no leftover test databases or processes.
+
+**Problems found by the checks and fixed (brief).** A concurrency test showed the performance read could report counts and
+scored rows from different moments while labels arrived (separate READ COMMITTED statements); it now runs in one
+REPEATABLE READ snapshot. The first gate run failed one test because the control plane imported the serving app for a
+helper; the helper moved to the serving schemas module and the gate was rerun in full. I also issued one read-only `git show`
+by mistake in a command line; it was blocked and not retried, and no other Git action was taken.
+
+**Limitations / not run.** No live run with real server processes for P4-8 (the behaviour was tested through the real apps in
+process on real PostgreSQL; the P4-7 live drill covers the process-level serving). No batch label endpoint; no label
+correction; no time-window views; the prediction and label logs grow without limit. Not run on Linux. Drift, alerts and the
+reference sample are P4-9, not started. The test-set reuse decision is still **open**; nothing here reads or counts it.
+
+## D-045 — P4-8 gate approved; P4-9 drift monitoring, reference samples and alerts (built and verified; stopped at the gate)
+
+**Date:** 2026-11-14. **Type/status:** owner decision (P4-8 approved, P4-9 go-ahead, one continuous run) and implementation, verified; awaiting owner gate approval.
+
+The real `automl_ops` database was checked read-only first: revision 0006 as expected. I applied no migration; **0007 is
+pending and the owner runs `scripts/db.py upgrade`**. No dependency, lockfile or pin change.
+
+**Evidently was not installed (owner action needed to proceed).** The plan and D-028 name Evidently, measured in a spike
+before any install, with SciPy as fallback. Evidently is not in `pyproject.toml` or `uv.lock`; installing it needs
+package-index access and a dependency change, which are not approved. I did not install anything. I used the plan's
+fallback idea in its dependency-free form: `monitor.py` implements the tests with numpy only (SciPy is only a transitive
+dependency and declaring it would also change `pyproject.toml`). `monitor.py` is the single module to swap Evidently into.
+Not built: Evidently's HTML report on disk (the full report is stored as JSON in PostgreSQL). If the owner wants Evidently,
+that is a separate approved step (spike, version, disk check, install).
+
+**Decisions I made (provisional, for the owner to confirm).** (1) Reference sample: one per model version, up to 1,000
+training rows chosen with the package's seed, stored in PostgreSQL with the model's predictions, source dataset reference and
+SHA-256, training-row fingerprint and package id; immutable; recomputed split must equal the manifest's or nothing is stored;
+created explicitly by `POST /models/{name}/versions/{n}/reference`; never replaced (asking again returns it). (2) Monitoring is
+on demand in the control plane (no scheduler), reading only `predictions` and labels; serving never imports it. (3) Tests: numeric
+features and regression predictions: two-sample KS (drift at p < 0.05); categorical features and predicted classes:
+Jensen-Shannon distance (drift at >= 0.1); dataset-drift share >= 0.5; performance drop: selection metric worse than the stored
+offline value by > 10 % relative with at least 30 labels. All are provisional defaults stored with each report and overridable
+per run. (4) "Minimum sample size" is a guard (`insufficient_data`, 30 rows), not an alert. (5) Alerts: three rules (feature share
+and prediction shift `warning`, performance drop `critical`); at most one unresolved alert per (deployment, rule, traffic scope);
+repeat -> `reoccurred`; a later clear `ok` run -> `auto_resolved`; failed, insufficient or not-evaluated runs change nothing; people
+can acknowledge and resolve with a reason; a resolved alert never changes. (6) Real and simulated traffic are separate scopes
+(default real) with separate alerts. (7) A failed run is stored as `failed` with its error; reports are immutable.
+
+**Built.** Migration 0007 (`reference_samples`, `monitoring_reports`, `alerts`, `alert_events`; immutability and alert-move
+triggers; partial unique index for one unresolved alert); `monitor.py` (statistics and rules), `reference.py`, `monitoring.py`;
+control-plane routes `api_control/monitoring.py`; schemas; `docs/monitoring.md`, `docs/api.md`; OpenAPI regenerated.
+
+**Verification.** Full `make check`: ruff pass, format pass (150 files), mypy strict (130 files) no issues, **1103 passed,
+2 warnings, 9 min 29 s, none skipped** (real PostgreSQL and sealed packages ran). New: 31 tests in `test_monitoring_postgres.py`
+plus updated revision pins, OpenAPI paths and a serving-isolation check. They cover: KS/JS statistics and threshold
+validation; reference creation, determinism, persistence, provenance, no held-out test row in the sample, no package file
+changed, immutability and its errors; classification and regression monitoring; insufficient and missing data; unshifted
+traffic raising no alert and injected shift raising one; repeat, recovery, recurrence; acknowledge and resolve with audit and
+invalid moves; real versus simulated separation; prediction shift; performance drop with and without enough labels; failed
+run recorded as failed and changing no alert; interrupted run leaving nothing partial; database outage (503); a second
+concurrent run refused and 6 racing runs never duplicating alerts; serving unaffected during monitoring, under load and when
+monitoring fails; no file under the models or store folders opened by a run; no train/package/dataset imports in the
+monitoring modules; report immutability and history integrity; database rules against hand-written statements; persistence
+across a restart; API validation, local request rules and 503 when disabled; migration 0007 down and up keeping predictions
+and feedback. OpenAPI current; protected fingerprints and `uv.lock` / `pyproject.toml` hashes identical; no leftover test
+databases or processes. Resource use: the monitoring tests and runs are fast (a run over a 60-row window and a 120-row reference
+takes milliseconds); no large-data timing was measured.
+
+**Problems found by the checks and fixed (brief).** An alert acknowledge/resolve statement used a parameter PostgreSQL could not
+type, found by the alert tests, and was replaced by fixed statements. No other failure at the gate.
+
+**Limitations / not run.** Evidently and its HTML report (above). Observed drift behaviour is on small synthetic toy data
+(150 rows, 120 reference rows); it is not evidence for real datasets, and the Step 25 simulator (P4-10) does not exist, so the
+plan's "Step 25 data" check is not done. No live run with real server processes for P4-9. No scheduler. Reports, alerts and the
+prediction log grow without limit. KS flags tiny shifts as significant on large windows. Not run on Linux. P4-10 not started.
+The test-set reuse decision is still **open**; nothing here reads or counts it.
+
+## D-046 — P4-9 gate approved; P4-10 traffic simulator, API quality pass and backend end-to-end (built and verified; stopped at the gate)
+
+**Date:** 2026-11-14. **Type/status:** owner decisions and implementation, verified; awaiting owner gate approval.
+
+**Owner decisions.** P4-9 approved and migration 0007 applied by the owner. P4-10 approved in the narrower scope: Steps 25 and 26,
+the backend half of Step 35 and limited documentation; the frontend (Phase 5) and application Compose, CI and final docs
+(Phase 6) stay in the plan and are not started. **Evidently is not to be installed**; `monitor.py` stays numpy-only. The
+simulator's unknown-file override flag was dropped. Thresholds must not be changed to make the demonstration pass. The real
+PostgreSQL service is not stopped or restarted by me.
+
+**Built.** `simulator.py` and `scripts/simulate_traffic.py` (`run`, `demo`; `make simulate`): only the known demo monitoring files
+(file name plus SHA-256 against `data/demo/manifest.json`, no override), refuses a file identical to any registered dataset
+version (and refuses if the control plane cannot be asked), always `simulated: true`, 127.0.0.1 only, seeded rows and labelled
+subset, batch and rate control, stops after three failed batches in a row with exact counts. `e2e.py`, `scripts/e2e_demo.py`
+(`make e2e`): upload, tracked final job, tracking check, register, promote, deploy, serve check, reference, normal/shifted/normal
+traffic with feedback and monitoring; stops at the first failed stage. Tests: `test_simulator.py` (12), `test_api_quality.py` (8),
+`test_e2e.py` (5). `docs/simulator.md`, `docs/api.md` section, README rewritten (it still said "no application code"), plan,
+architecture and CLAUDE.md updated. No API change: both OpenAPI files unchanged and current. No migration, no dependency change.
+
+**Verification.** Full `make check` once: ruff pass, `ruff format --check` 158 files formatted, mypy strict 137 files no issues,
+**1128 passed, 2 warnings, 10 min 2 s**, none skipped (real PostgreSQL ran; both warnings are the known httpx/Starlette one and a
+SQLAlchemy mapper note). `uv.lock` and `pyproject.toml` hashes identical to before. Fingerprints (file list, sizes and times) of
+`data/store`, `models`, `backups`, `mlflow`, `mlflow-pg`, `demo` and `raw` identical before and after the run. Real database:
+revision 0007 = head, no migration applied by me, no leftover `automl_test_*` database, no leftover server or worker process.
+**Live run** (real `serve_control`, `serve_model` and `worker` processes plus `e2e_demo.py`, throwaway database/store/models/MLflow
+folder, non-default ports; all removed afterwards): both demo datasets passed all 9 stages (Abalone 8.6 s, Adult 12.0 s); peak
+memory API/serving/worker 234/228/301 MB and 295/228/398 MB. Measured with the default thresholds, nothing tuned: normal traffic
+raised no alert; shifted traffic opened `prediction_shift` and `performance_drop` on Abalone and `prediction_shift` on Adult
+(Jensen-Shannon 0.121 against 0.1: a thin margin); drift alerts auto-resolved after normal traffic.
+
+**Findings reported, not changed (owner to decide).** (1) `drifted_feature_share` (threshold 0.5) did not fire on either real demo
+dataset: 3 of 8 features (0.375) and 4 of 14 (0.286) drifted. A lower share threshold (about 0.25 to 0.3) would fire on both;
+proposed for approval, not made. (2) `performance_drop` does not clear after traffic recovers, because live performance
+uses all labelled predictions in scope (up to 50,000, P4-8) while drift uses the latest 1,000 predictions. A window-aligned
+performance option is proposed, not made. (3) A sparse categorical (`native-country`) crossed the Jensen-Shannon threshold on
+normal Adult traffic by sampling noise; harmless alone.
+A test of the first run showed `z` flagging by chance in the toy shifted phase (KS, 5 % per feature); the test now asserts that
+the shifted features are included, not an exact list.
+
+**Not done / NOT RUN.** Compose: only read-only checks of the running service (healthy, volume `automl-ops_automl_ops_pgdata`,
+384 MiB limit using about 79 MiB, bound to 127.0.0.1:55432); the stop/start persistence check is **NOT RUN** (not authorised).
+Finding for Phase 6: the container's restart policy is `no`, so it does not come back after a Docker or host restart; I did not
+edit `compose.yaml` because applying the change would recreate the real database container. Application containers,
+service-dependency health checks and the Compose memory measurement are Phase 6. No browser testing (no UI exists). Not run on
+Linux. Pagination was not added to `/algorithms`, `/datasets`, `/models`, `/models/{name}/versions` (listed in `docs/api.md`).
+Monitoring timing at the maximum window was not measured. The test-set reuse decision is still **open**; nothing here reads it.
+Reports, alerts and the prediction log still grow without limit.

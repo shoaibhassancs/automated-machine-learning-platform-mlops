@@ -314,13 +314,13 @@ def test_health_ok_degraded_and_unreachable(
     assert ok.json()["database"] == {
         "reachable": True,
         "at_head": True,
-        "revision": "0006",
-        "head": "0006",
+        "revision": "0007",
+        "head": "0007",
     }
     behind = DbStatus(
         current=None,
-        head="0006",
-        pending=("0001", "0002", "0003", "0004", "0005", "0006"),
+        head="0007",
+        pending=("0001", "0002", "0003", "0004", "0005", "0006", "0007"),
         known=True,
     )
     response = client(make_app(tmp_path, monkeypatch, db_status=lambda: behind)).get("/health")
@@ -541,6 +541,15 @@ def test_openapi_file_is_current_and_describes_every_error() -> None:
         "/deployments/{deployment_id}/undeploy",
         "/deployments/{deployment_id}/performance",
         "/deployments/{deployment_id}/feedback",
+        "/models/{name}/versions/{number}/reference",
+        "/deployments/{deployment_id}/monitor",
+        "/deployments/{deployment_id}/monitoring",
+        "/deployments/{deployment_id}/reports",
+        "/reports/{report_id}",
+        "/alerts",
+        "/alerts/{alert_id}",
+        "/alerts/{alert_id}/acknowledge",
+        "/alerts/{alert_id}/resolve",
     }
     for path, operations in spec["paths"].items():
         for method, operation in operations.items():
