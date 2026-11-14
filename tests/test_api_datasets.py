@@ -314,11 +314,14 @@ def test_health_ok_degraded_and_unreachable(
     assert ok.json()["database"] == {
         "reachable": True,
         "at_head": True,
-        "revision": "0004",
-        "head": "0004",
+        "revision": "0006",
+        "head": "0006",
     }
     behind = DbStatus(
-        current=None, head="0004", pending=("0001", "0002", "0003", "0004"), known=True
+        current=None,
+        head="0006",
+        pending=("0001", "0002", "0003", "0004", "0005", "0006"),
+        known=True,
     )
     response = client(make_app(tmp_path, monkeypatch, db_status=lambda: behind)).get("/health")
     assert response.status_code == 503
@@ -486,9 +489,9 @@ def test_origin_parsing() -> None:
 
 def test_settings_validation() -> None:
     assert ApiSettings.from_environment({}).port == 8100
-    env = {"AUTOML_API_PORT": "8200", "AUTOML_UI_ORIGIN": "http://127.0.0.1:3000"}
+    env = {"AUTOML_API_PORT": "8300", "AUTOML_UI_ORIGIN": "http://127.0.0.1:3000"}
     configured = ApiSettings.from_environment(env)
-    assert configured.port == 8200 and "127.0.0.1:8200" in configured.allowed_hosts
+    assert configured.port == 8300 and "127.0.0.1:8300" in configured.allowed_hosts
     for bad in (
         {"AUTOML_API_PORT": "abc"},
         {"AUTOML_API_PORT": "80"},
@@ -530,6 +533,14 @@ def test_openapi_file_is_current_and_describes_every_error() -> None:
         "/models/{name}/sync",
         "/models/{name}/mirror/check",
         "/models/{name}/reconcile",
+        "/deployments",
+        "/deployments/active",
+        "/deployments/rollback",
+        "/deployments/{deployment_id}",
+        "/deployments/{deployment_id}/switch",
+        "/deployments/{deployment_id}/undeploy",
+        "/deployments/{deployment_id}/performance",
+        "/deployments/{deployment_id}/feedback",
     }
     for path, operations in spec["paths"].items():
         for method, operation in operations.items():

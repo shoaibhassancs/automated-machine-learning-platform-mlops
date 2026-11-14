@@ -1400,3 +1400,133 @@ preparing this entry (2026-11-14) reported **0003**. I did not run or apply any 
 someone other than me (presumably the owner). This entry records what was observed; the owner can confirm with
 `scripts/db.py status`. `make api` should now start. The owner then asked for a P4-6 proposal only; nothing of P4-6 is
 implemented.
+
+## D-042 — P4-6: MLflow mirror and reconcile of the registry (built and verified; stopped at the gate)
+
+**Date:** 2026-11-14. **Type/status:** implementation, verified; awaiting owner gate approval.
+
+**Owner decisions (approved proposal).** (1) The mirror is opt-in, off by default (`AUTOML_REGISTRY_MIRROR=on`).
+(2) Only the `production` MLflow alias is mirrored; every status goes in as a version tag. (3) Mirror functions are added
+**additively** to `tracking.py`; the owner explicitly authorized modifying that sealed module for P4-6 only. (4) Sync is
+inline and best-effort, plus an API background retry every 30 s, an explicit sync endpoint and a CLI. (5) A separate
+append-only `registry_sync_log`. (6) MLflow registered models, versions and runs are never deleted. (7) A required sealed
+package that is not yet tracked is tracked automatically under the existing tracking and D6 rules.
+**Safeguards** (all implemented, see tests): platform-owned objects only (tag `platform.managed=true`); foreign models,
+extra or foreign aliases are reported as conflicts, never changed or removed; PostgreSQL stays sole authority (an MLflow
+failure never blocks or undoes a registry operation); restart-safe retry from persisted state; per-model PostgreSQL
+advisory lock (class 7266); D6 backend policy unchanged (archive `data/mlflow/` refused, also via symlink; separate SQLite
+only in `AUTOML_JOBS_MLFLOW_DIR`; global SQLite default unchanged); no retraining, no test-part reads, no unpickling;
+check is read-only; reconcile needs an explicit request and a non-empty reason (DB CHECK) and is always logged with the
+detected discrepancy, intended repair, result and failure details; `synced_seq` advances only when the complete desired
+state through that sequence is verified, events arriving during a pass stay pending.
+
+**Spike (throwaway DB and scratch only, before implementation): PASSED.** Findings that shaped the design: MLflow 3.18.0
+alias writes can race (so aliases are written under the advisory lock and retried); tag and 200-character run-artifact-URI
+limits; a 500-character model-version source column; `runs:/<run>/package` works as the version source. One spike harness
+slip (see mistakes).
+
+**Built.** Migration 0004 (`registry_sync`, `registry_sync_log`, guard triggers: progress is forward-only and never above
+`last_event_seq`; log is append-only incl. TRUNCATE); `registry_mirror.py`; additive mirror section in `tracking.py`;
+endpoints `GET /registry/sync`, `GET|POST /models/{name}/sync`, `GET /models/{name}/mirror/check`,
+`POST /models/{name}/reconcile` plus additive `mirror` fields and an API lifespan retry task; `scripts/registry.py`
+(status, sync, check, reconcile `--reason` `--apply`; exits 2 while the real DB is below 0004); `.env.example`,
+`docs/registry.md`, `docs/api.md`, `docs/tracking.md`, `docs/openapi-control.json`.
+**Deviations from the proposal.** The planned `registry_mirror_versions` table was dropped: the MLflow version tags are the
+mapping. `registry_sync` gained `synced_state` and `attempt_state` so drift can be told from pending work. Pending is
+derived (`last_event_seq > synced_seq`), so `registry_events` stays append-only and `registry_events.sync_state` from
+ARCHITECTURE is realised that way. Only passes that changed something or failed are logged (reconciles always).
+
+**Verification (real PostgreSQL 17 and real MLflow on PostgreSQL, throwaway databases).** Full `make check`: ruff pass,
+ruff format 122 files already formatted, mypy strict 104 source files no issues, **961 passed, 2 warnings, 8 min 26 s,
+none skipped or deselected** (the 2 warnings are the known httpx/Starlette and a SQLAlchemy `noload` deprecation from MLflow).
+New: 31 tests (`test_registry_mirror.py` 23, `test_api_mirror.py` 8) covering initial and incremental sync, rollback alias
+movement, outage and recovery, interrupted sync (two break points, no duplicate versions), events during a pass, 6
+concurrent syncers, restart-safe retry, duplicate detection without deletion, manual drift (check read-only) then explicit
+reconcile with audit row, deleted-version drift, foreign model/aliases untouched, no MLflow delete calls, package
+auto-tracking and a broken package failing only the mirror, test-part/model/dataset isolation, disabled mode equal to P4-5,
+archive refusal incl. symlink, separate SQLite, DB rules, migration 0004 down/up, pure `classify`. `export_openapi.py --check`:
+current (181,012 bytes). Protected fingerprints (data/store, models, backups, mlflow, mlflow-pg) and `uv.lock` /
+`pyproject.toml` hashes identical before and after. No `automl_test_*` databases left; no stray processes.
+**Live run (real API process, throwaway DBs).** Outage: registry responses 200 in 0.05-0.09 s with `mirror: failed`;
+recovery by background retry about 90 s (backoff); reconcile of a moved alias 0.6 s; SIGKILL mid-pass (1.2 s) recovered with
+exactly one MLflow version per package. Packages 13,564,404 + 501,102 bytes; their MLflow artifacts 15,137,648 bytes; MLflow
+database about 11.2 MB; API peak RSS 271-285 MB.
+
+**Mistakes (mine).** Spike attempt 1 used a scratch path that made the artifact URI 218 characters (the existing pre-flight
+refused correctly; reran in a short temp dir). A spike harness call ignored the client's tracking URI. Test slips: 0/1-based
+index in a helper, wrong expected event and pending counts, a double archive. A reconcile-reason CHECK let NULL through (fixed
+in model and migration). `run_pending` skipped silently when the store factory raised (fixed to record failure and backoff).
+Live-drill kill delays 0.05-0.45 s killed the process before any MLflow write (rerun with 0.7-1.7 s). Earlier in the session
+I ran a read-only `git diff --stat` by accident (already reported); no other Git action.
+
+**Limitations / not run.** Linux and models over 13 MB not run. A real MLflow server stop/start was not tested (a refused
+database connection was). MLflow server mode not tested. Idle drift is found within about 10 minutes (600 s re-read) or by
+`check`. A permanently broken package keeps its model `failed`. Reconcile with a blocking conflict changes nothing. A foreign
+holder of the `production` alias is treated as a conflict (my reading of "ambiguous"). The cross-job test-set reuse policy is
+still **open** and unchanged (no counters or restrictions added).
+
+**Migration status.** Migration 0004 is **not applied** to the real `automl_ops` database (read-only check: 0003; head 0004).
+The owner runs `uv run python scripts/db.py upgrade`; until then `make api` and `scripts/registry.py` refuse. P4-7 not started.
+
+## D-043 — P4-6 gate approved; P4-7 serving and deployments (built and verified; stopped at the gate)
+
+**Date:** 2026-11-14. **Type/status:** owner decision (P4-6 approval, P4-7 go-ahead) and implementation, verified; awaiting owner gate approval.
+
+**Owner instructions.** P4-6 approved. P4-7 (BUILD_PLAN Steps 21-22) to be implemented through to its gate without routine
+stops, reusing the existing package verification and loading, PostgreSQL authoritative for deployment state, a serving
+app separate from the control plane, localhost only, no new infrastructure. The pasted brief was cut off mid-sentence
+("Pres..."), so I worked from the approved plan and the stated boundaries; if the missing sentence added a requirement I
+have not seen it. The real `automl_ops` database was checked read-only first: revision 0004 as expected. I applied no
+migration to it; **0005 is pending and the owner runs `scripts/db.py upgrade`**.
+
+**Decisions I made (provisional, for the owner to confirm).** (1) Deployable = registry status `staging` or `production`
+(not development or archived). (2) One active deployment at a time (the serving app serves one version). (3) The registry's
+rules are untouched: archiving or superseding a deployed version does not undeploy it; `registry_status` shows it.
+(4) `POST /deployments/{id}/undeploy` instead of the architecture's `DELETE /deployments/{id}` (a reason is required and
+DELETE bodies are poorly supported). (5) Rollback undoes a *switch* only, never a rollback (mirrors P4-5). (6) The serving
+app serves only the deployment PostgreSQL says is active and verified; a deployment that fails to load is not served and no
+earlier model stands in. (7) If the database becomes unreachable after a model verified, that model keeps serving. (8) Input
+rows need exactly the model's columns; a number in a categorical column is refused. (9) `simulated` flag on `/predict` and
+`predictions.is_simulated`, so P4-10 needs no migration. (10) Control plane reaches the serving app with the standard library
+(`urllib`), no new dependency.
+
+**Built.** Migration 0005 (`deployments`, `predictions`; partial unique index for one active row; guard triggers: no
+delete or truncate, ended rows immutable, only deployable versions, package matches version; predictions never updated);
+`deployments.py` (repository, advisory lock class 7267, deep verification before locks); `serving_client.py`;
+`api_serving/` (settings, input validation, runtime, schemas, app, openapi); control-plane routes `api_control/deployments.py`;
+`package.loaded_parity_problems` (small public wrapper of the existing parity check); `make_engine` timeout parameters;
+`ApiSettings.serving_port` (AUTOML_SERVING_PORT, default 8200, must differ from the API port); `scripts/serve_model.py`,
+`make serve`; `scripts/export_openapi.py` now writes `docs/openapi-control.json` and `docs/openapi-serving.json`;
+`docs/serving.md`, `docs/api.md`, `.env.example`.
+
+**Verification.** Full `make check`: ruff pass, format pass, mypy strict (121 files) no issues, **1044 passed, 2 warnings,
+8 min 46 s, none skipped** (real PostgreSQL and real sealed packages ran). New: 83 tests in five files
+(`test_deployments_postgres` 22, `test_serving_postgres` 24, `test_api_deployments` 11, `test_serving_inputs` 21,
+`test_serving_isolation` 5) plus updated revision pins. They cover: served predictions and probabilities equal the saved
+pipeline's (classification and regression); wrong columns and values give a clear 422; switch changes the answering model and
+shows in `/model`; rollback and undeploy; simultaneous deploys and switches have one winner; database rules against
+hand-written statements; migration 0005 down and up; a package corrupted after deployment is not served and recovery by
+rollback; load-retry window; mismatch with the registry record; unreachable database at start, after start, and schema not
+current; logging failure never fails a prediction; poll-only convergence; restart serves from PostgreSQL alone; predictions
+during repeated switches each come from one consistent deployment; the serving app imports neither MLflow nor the
+control-plane app; the control plane's request rules apply to both apps. Both OpenAPI files are current. Protected
+fingerprints (data/store, models, backups, mlflow, mlflow-pg) and `uv.lock`/`pyproject.toml` hashes are identical before and
+after. No leftover test databases or processes.
+**Live run** (real `serve_control.py` and `serve_model.py` processes, throwaway database, SIGKILL of each process, database
+connections refused and restored): deploy and switch reported `in_sync`; a rollback made while the serving app was dead
+was picked up when it restarted (1.6 s to ready); predictions continued with the control plane down; during the database
+outage predictions returned 200 with `logged: false` and recovered to `logged: true`; a change made behind the app's back
+converged by polling in 4.2 s. 1-row `/predict` median 14 ms, p95 22 ms; serving RSS about 226 MB; 204 prediction rows 144 KB.
+
+**Mistakes (mine).** The first OpenAPI export failed (a local import made a postponed annotation unresolvable; fixed). The
+logged latency was unrounded while the response was rounded (fixed: rounded once, before logging). Test slips: wrong
+expectations for an error code and for a hint text, a model class that forbids extra fields used on a response with one,
+a fixture that registered a third package missing from a copied folder. A first `sed -i` call failed on macOS (BSD
+syntax) and I redid those edits with Python. The existing settings test used API port 8200, now the serving default, so I
+changed it to 8300 (an existing user config on 8200 would now be refused with a clear message).
+
+**Limitations / not run.** One deployment, one serving process; no canary, shadow or A/B. The prediction log grows without
+limit (no retention yet). Feedback and live performance are P4-8. Not run on Linux or with models over 13 MB; a real
+PostgreSQL server stop was not exercised (connections to a throwaway database were refused instead). A stale model can
+answer for a change committed just before a database outage. The test-set reuse decision is still **open**; no counters
+or restrictions added. P4-8 not started.

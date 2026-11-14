@@ -106,10 +106,17 @@ def describe(url: URL) -> str:
     return url.render_as_string(hide_password=True)
 
 
-def make_engine(url: URL | None = None) -> Engine:
-    """An engine with a short connect timeout; connections are checked before use."""
+def make_engine(
+    url: URL | None = None,
+    *,
+    connect_timeout: int = CONNECT_TIMEOUT_SECONDS,
+    pool_timeout: float = 30.0,
+) -> Engine:
+    """An engine with a short connect timeout; connections are checked before use. The serving app
+    (P4-7) passes shorter timeouts so a slow database never stalls a prediction for long."""
     return create_engine(
         url if url is not None else database_url(),
         pool_pre_ping=True,
-        connect_args={"connect_timeout": CONNECT_TIMEOUT_SECONDS},
+        pool_timeout=pool_timeout,
+        connect_args={"connect_timeout": connect_timeout},
     )

@@ -35,6 +35,8 @@ Datasets are addressed by name and version number (`abalone@v1` is `/datasets/ab
 | `POST /models/{name}/versions/{n}/promote`, `.../archive`, `POST /models/{name}/rollback`, `GET /models/{name}/events` | Registry moves and the append-only history |
 
 | `GET /registry/sync`, `GET\|POST /models/{name}/sync`, `GET /models/{name}/mirror/check`, `POST /models/{name}/reconcile` | The opt-in MLflow mirror of the registry: standing, sync, read-only check, explicit audited reconcile (P4-6, `docs/registry.md`) |
+| `POST /deployments`, `GET /deployments[/active\|/{id}]`, `POST /deployments/{id}/switch`, `POST /deployments/rollback`, `POST /deployments/{id}/undeploy` | Which registered version is live, its history, and the serving app's state after each change (P4-7, `docs/serving.md`) |
+| `GET /deployments/{id}/performance`, `GET /deployments/{id}/feedback` | Live performance from labelled predictions only, with the offline summary shown separately; the label history (P4-8, `docs/serving.md`). Labels are submitted to the serving app's `POST /feedback` |
 
 `task-check` is **stateless**: it stores nothing (D-029 removed the `task_configs` table, so the old
 `PUT .../task` of ARCHITECTURE §5 does not exist; the task configuration will travel in the

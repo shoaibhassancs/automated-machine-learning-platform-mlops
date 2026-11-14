@@ -1,0 +1,1207 @@
+{
+  "components": {
+    "schemas": {
+      "DeploymentRef": {
+        "additionalProperties": false,
+        "properties": {
+          "deployment_id": {
+            "title": "Deployment Id",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "package_id": {
+            "title": "Package Id",
+            "type": "string"
+          },
+          "task": {
+            "enum": [
+              "classification",
+              "regression"
+            ],
+            "title": "Task",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deployment_id",
+          "model",
+          "version",
+          "package_id",
+          "task"
+        ],
+        "title": "DeploymentRef",
+        "type": "object"
+      },
+      "ErrorBody": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorBody",
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorBody"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "FeedbackRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "deployment_id": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional: refuse (409) unless the prediction belongs to this deployment.",
+            "title": "Deployment Id"
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional: refuse (409) unless the prediction was made by this model version.",
+            "title": "Model Version"
+          },
+          "prediction_id": {
+            "description": "A `prediction_id` returned by `POST /predict`.",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "title": "Prediction Id",
+            "type": "string"
+          },
+          "true_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "description": "The true outcome: one of the model's classes as text (classification), or a finite number (regression).",
+            "title": "True Value"
+          }
+        },
+        "required": [
+          "prediction_id",
+          "true_value"
+        ],
+        "title": "FeedbackRequest",
+        "type": "object"
+      },
+      "FeedbackResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "description": "False: this exact label had already been recorded; nothing was written.",
+            "title": "Created",
+            "type": "boolean"
+          },
+          "label": {
+            "$ref": "#/components/schemas/LabelModel"
+          }
+        },
+        "required": [
+          "label",
+          "created"
+        ],
+        "title": "FeedbackResponse",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "database": {
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
+            "title": "Database",
+            "type": "string"
+          },
+          "desired_deployment_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desired Deployment Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "loaded_deployment_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loaded Deployment Id"
+          },
+          "model_state": {
+            "title": "Model State",
+            "type": "string"
+          },
+          "ready": {
+            "description": "A verified model is being served.",
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "status": {
+            "const": "ok",
+            "description": "The process is up.",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "ready",
+          "model_state",
+          "database",
+          "desired_deployment_id",
+          "loaded_deployment_id",
+          "error",
+          "checked_at"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "InputColumn": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "numeric",
+              "categorical"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind"
+        ],
+        "title": "InputColumn",
+        "type": "object"
+      },
+      "LabelModel": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "deployment_id": {
+            "title": "Deployment Id",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_simulated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Simulated"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "integer"
+          },
+          "prediction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the model predicted for this row.",
+            "title": "Prediction"
+          },
+          "prediction_id": {
+            "title": "Prediction Id",
+            "type": "string"
+          },
+          "true_value": {
+            "title": "True Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "prediction_id",
+          "deployment_id",
+          "model_version",
+          "true_value",
+          "created_at",
+          "prediction",
+          "is_simulated"
+        ],
+        "title": "LabelModel",
+        "type": "object"
+      },
+      "ModelInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "algorithm": {
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "classes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classes"
+          },
+          "deployed_at": {
+            "title": "Deployed At",
+            "type": "string"
+          },
+          "deployment": {
+            "$ref": "#/components/schemas/DeploymentRef"
+          },
+          "input_columns": {
+            "items": {
+              "$ref": "#/components/schemas/InputColumn"
+            },
+            "title": "Input Columns",
+            "type": "array"
+          },
+          "loaded_at": {
+            "title": "Loaded At",
+            "type": "string"
+          },
+          "max_rows": {
+            "title": "Max Rows",
+            "type": "integer"
+          },
+          "registry_status": {
+            "description": "The version's registry status now (it can differ from when it was deployed).",
+            "title": "Registry Status",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deployment",
+          "target",
+          "algorithm",
+          "classes",
+          "input_columns",
+          "deployed_at",
+          "loaded_at",
+          "registry_status",
+          "max_rows"
+        ],
+        "title": "ModelInfo",
+        "type": "object"
+      },
+      "PredictRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "description": "One JSON object per row, with exactly the model's input columns (see `GET /model`). `null` or an empty string is a missing value. Numeric columns take a number or a clean number as text; categorical columns take text.",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Rows",
+            "type": "array"
+          },
+          "simulated": {
+            "default": false,
+            "description": "Label these rows as simulated traffic (never real observations).",
+            "title": "Simulated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "title": "PredictRequest",
+        "type": "object"
+      },
+      "PredictResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "deployment": {
+            "$ref": "#/components/schemas/DeploymentRef"
+          },
+          "latency_ms": {
+            "description": "Model time for the whole request, in milliseconds.",
+            "title": "Latency Ms",
+            "type": "number"
+          },
+          "logged": {
+            "description": "False if the prediction log could not be written; the predictions are valid.",
+            "title": "Logged",
+            "type": "boolean"
+          },
+          "predictions": {
+            "items": {
+              "$ref": "#/components/schemas/PredictionItem"
+            },
+            "title": "Predictions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "deployment",
+          "predictions",
+          "latency_ms",
+          "logged"
+        ],
+        "title": "PredictResponse",
+        "type": "object"
+      },
+      "PredictionItem": {
+        "additionalProperties": false,
+        "properties": {
+          "prediction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "description": "The predicted class (classification) or value (regression).",
+            "title": "Prediction"
+          },
+          "prediction_id": {
+            "description": "Identifies this row's prediction (for feedback later).",
+            "title": "Prediction Id",
+            "type": "string"
+          },
+          "probabilities": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Class probabilities in the model's class order (classification only).",
+            "title": "Probabilities"
+          }
+        },
+        "required": [
+          "prediction_id",
+          "prediction",
+          "probabilities"
+        ],
+        "title": "PredictionItem",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "summary": "Serves the one deployed model version. Local, single-user: bound to 127.0.0.1.",
+    "title": "AutoML Ops serving app",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/feedback": {
+      "post": {
+        "description": "Records the ground truth for one `prediction_id`. A label is append-only: the same label again is a no-op (`created: false`); a different label for an already labelled prediction is refused (409 `feedback_conflict`) and the first label stands. Works even if the prediction's deployment has ended or no model is loaded, because it needs only PostgreSQL. Live performance is read from the control plane (`GET /deployments/{id}/performance`).",
+        "operationId": "feedback_feedback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the app does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such logged prediction"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The label conflicts with the prediction or with its existing label"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The input does not match the model's feature schema, or the true value is invalid"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No verified model is being served"
+          }
+        },
+        "summary": "Attach the true value to a logged prediction",
+        "tags": [
+          "serving"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the app does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such logged prediction"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The label conflicts with the prediction or with its existing label"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The input does not match the model's feature schema, or the true value is invalid"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No verified model is being served"
+          }
+        },
+        "summary": "Liveness and model state",
+        "tags": [
+          "serving"
+        ]
+      }
+    },
+    "/model": {
+      "get": {
+        "operationId": "model_model_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the app does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such logged prediction"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The label conflicts with the prediction or with its existing label"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The input does not match the model's feature schema, or the true value is invalid"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No verified model is being served"
+          }
+        },
+        "summary": "The model being served",
+        "tags": [
+          "serving"
+        ]
+      }
+    },
+    "/predict": {
+      "post": {
+        "description": "Rows are validated against the model's feature schema first (`GET /model`): exactly its input columns, clean numbers in numeric columns. Each row gets its own prediction id and is logged with its input, output, model version and latency; a logging failure never fails the prediction (`logged: false`).",
+        "operationId": "predict_predict_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PredictResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the app does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such logged prediction"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The label conflicts with the prediction or with its existing label"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The input does not match the model's feature schema, or the true value is invalid"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No verified model is being served"
+          }
+        },
+        "summary": "Predict for one or more rows",
+        "tags": [
+          "serving"
+        ]
+      }
+    },
+    "/ready": {
+      "get": {
+        "operationId": "ready_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the app does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such logged prediction"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The label conflicts with the prediction or with its existing label"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The input does not match the model's feature schema, or the true value is invalid"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No verified model is being served"
+          }
+        },
+        "summary": "Readiness: 200 only while a verified model is being served",
+        "tags": [
+          "serving"
+        ]
+      }
+    },
+    "/reload": {
+      "post": {
+        "description": "Takes no input: the app re-reads the active deployment from PostgreSQL and loads and verifies it. It cannot be told what to load. The control plane calls this after every deployment change; without it the app notices the change within its poll interval.",
+        "operationId": "reload_reload_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the app does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such logged prediction"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The label conflicts with the prediction or with its existing label"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The input does not match the model's feature schema, or the true value is invalid"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No verified model is being served"
+          }
+        },
+        "summary": "Re-read the active deployment now",
+        "tags": [
+          "serving"
+        ]
+      }
+    }
+  }
+}

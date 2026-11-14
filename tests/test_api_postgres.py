@@ -130,8 +130,8 @@ def test_start_up_refuses_until_the_database_is_at_the_head(engine: Engine, tmp_
         assert health.json()["database"] == {
             "reachable": True,
             "at_head": True,
-            "revision": "0004",
-            "head": "0004",
+            "revision": "0006",
+            "head": "0006",
         }
 
 

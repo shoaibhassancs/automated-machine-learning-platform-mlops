@@ -646,7 +646,7 @@ def test_migration_0003_goes_down_and_up_again(job_env: JobEnv) -> None:
             )
         }
     assert left == set()
-    assert migrate.upgrade(job_env.engine).current == "0004"
+    assert migrate.upgrade(job_env.engine).current == "0006"
     assert migrate.check(job_env.engine).ok
 
 

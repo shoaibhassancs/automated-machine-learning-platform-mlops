@@ -460,6 +460,15 @@ def load_package(
     return ModelPackage(path, manifest, pipeline, _read_json(path / TEST_RESULT_FILE))
 
 
+def loaded_parity_problems(package: ModelPackage) -> list[str]:
+    """Compare a *loaded* package's predictions with its saved reference predictions (P4-7: the
+    serving app checks the model it is about to serve, without a second read of the file)."""
+    try:
+        return _parity_problems(package.pipeline, _read_json(package.path / PARITY_FILE))
+    except (PackageError, KeyError, ValueError) as error:
+        return [f"the parity check could not run: {error}"]
+
+
 @dataclass(frozen=True)
 class PackageCheck:
     package_id: str

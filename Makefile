@@ -1,4 +1,4 @@
-.PHONY: lint test typecheck check db-up db-stop api openapi worker
+.PHONY: lint test typecheck check db-up db-stop api openapi worker serve
 
 lint:
 	uv run ruff check .
@@ -31,6 +31,10 @@ api:
 	uv run python scripts/serve_control.py
 openapi:
 	uv run python scripts/export_openapi.py
+
+# Serving app (P4-7) on 127.0.0.1:8200: serves the active deployment. Same start-up checks as `make api`.
+serve:
+	uv run python scripts/serve_model.py
 
 # Job worker (P4-4): one process, one job at a time. Needs `make db-up` and the migration head.
 worker:

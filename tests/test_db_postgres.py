@@ -125,16 +125,16 @@ def test_upgrade_builds_the_catalog_and_job_tables_on_an_empty_database(engine: 
     before = migrate.status(engine)
     assert (before.current, before.pending, before.up_to_date) == (
         None,
-        ("0001", "0002", "0003", "0004"),
+        ("0001", "0002", "0003", "0004", "0005", "0006"),
         False,
     )
     after = migrate.upgrade(engine)
-    assert after.up_to_date and after.current == "0004" and after.pending == ()
+    assert after.up_to_date and after.current == "0006" and after.pending == ()
     tables = set(inspect(engine).get_table_names())
     assert tables == {
         "alembic_version", "datasets", "dataset_versions", "training_jobs", "job_events",
         "registered_models", "model_versions", "registry_events", "registry_sync",
-        "registry_sync_log",
+        "registry_sync_log", "deployments", "predictions", "feedback",
     }  # fmt: skip
 
 

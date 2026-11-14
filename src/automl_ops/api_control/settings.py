@@ -14,6 +14,7 @@ from automl_ops.ingest import DEFAULT_LIMITS, IngestLimits
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8100
+DEFAULT_SERVING_PORT = 8200  # the serving app (P4-7); the control plane only calls it
 DEFAULT_UI_ORIGIN = "http://localhost:5173"  # the Vite dev server (Step 27)
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
@@ -59,6 +60,7 @@ class ApiSettings:
     heavy_concurrency: int = HEAVY_CONCURRENCY
     mirror_retry_seconds: float = 30.0  # background retry of pending MLflow mirror work
     models_root: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "models")
+    serving_port: int = DEFAULT_SERVING_PORT
 
     def __post_init__(self) -> None:
         if not 1024 <= self.port <= 65535:
@@ -68,6 +70,8 @@ class ApiSettings:
                 "AUTOML_UI_ORIGIN must be one origin like http://localhost:5173 "
                 "(scheme, host and optional port; no path)"
             )
+        if not 1024 <= self.serving_port <= 65535:
+            raise SettingsError("the serving port must be between 1024 and 65535")
         if not 1.0 <= self.mirror_retry_seconds <= 3600.0:
             raise SettingsError("mirror_retry_seconds must be between 1 and 3600")
         if self.heavy_concurrency < 1:
@@ -97,6 +101,14 @@ class ApiSettings:
             port = int(get("AUTOML_API_PORT", str(DEFAULT_PORT)) or DEFAULT_PORT)
         except ValueError as error:
             raise SettingsError("AUTOML_API_PORT must be a number") from error
+        try:
+            serving_port = int(
+                get("AUTOML_SERVING_PORT", str(DEFAULT_SERVING_PORT)) or DEFAULT_SERVING_PORT
+            )
+        except ValueError as error:
+            raise SettingsError("AUTOML_SERVING_PORT must be a number") from error
+        if serving_port == port:
+            raise SettingsError("AUTOML_SERVING_PORT must differ from AUTOML_API_PORT")
         store = get("AUTOML_STORE_DIR")
         models = get("AUTOML_MODELS_DIR")
         return ApiSettings(
@@ -104,4 +116,5 @@ class ApiSettings:
             ui_origin=get("AUTOML_UI_ORIGIN", DEFAULT_UI_ORIGIN) or DEFAULT_UI_ORIGIN,
             store_root=Path(store) if store else PROJECT_ROOT / "data" / "store",
             models_root=Path(models) if models else PROJECT_ROOT / "data" / "models",
+            serving_port=serving_port,
         )

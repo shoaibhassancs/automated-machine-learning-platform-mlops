@@ -16,6 +16,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Identity,
     Index,
@@ -59,6 +60,12 @@ SYNC_ERROR_KINDS = ("error", "drift", "conflict")
 SYNC_LOG_KINDS = ("sync", "reconcile")
 SYNC_LOG_OUTCOMES = ("ok", "failed", "drift", "conflict", "partial")
 PACKAGE_ID_REGEX = r"^m-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
+
+# P4-7: deployments. A row is one period during which one registered version was live; at most one
+# row is `active`. Rows are never deleted and, once `ended`, never change (migration 0005 triggers).
+DEPLOYMENT_STATES = ("active", "ended")
+DEPLOYMENT_ACTIONS = ("deploy", "switch", "rollback")
+DEPLOYABLE_STATES = ("staging", "production")  # registry statuses a version may be deployed from
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
@@ -325,4 +332,93 @@ class RegistrySyncLog(Base):
     seq: Mapped[int] = mapped_column(Integer)  # the registry event number this pass targeted
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     details: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Deployment(Base):
+    """One period in which one registered version was the live model (P4-7)."""
+
+    __tablename__ = "deployments"
+    __table_args__ = (
+        CheckConstraint(_in("status", DEPLOYMENT_STATES), name="status"),
+        CheckConstraint(_in("action", DEPLOYMENT_ACTIONS), name="action"),
+        CheckConstraint("char_length(reason) BETWEEN 1 AND 500", name="reason_length"),
+        CheckConstraint(
+            "end_reason IS NULL OR char_length(end_reason) BETWEEN 1 AND 500",
+            name="end_reason_length",
+        ),
+        CheckConstraint(f"package_id ~ '{PACKAGE_ID_REGEX}'", name="package_id_format"),
+        CheckConstraint(
+            "(status = 'active' AND ended_at IS NULL AND end_reason IS NULL) OR "
+            "(status = 'ended' AND ended_at IS NOT NULL AND end_reason IS NOT NULL)",
+            name="end_consistent",
+        ),
+        CheckConstraint(
+            "(action = 'deploy' AND replaced_id IS NULL) OR "
+            "(action <> 'deploy' AND replaced_id IS NOT NULL)",
+            name="replaced_consistent",
+        ),
+        # At most one active deployment: every active row has the same index key.
+        Index(
+            "uq_deployments_one_active",
+            text("(true)"),
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    model_id: Mapped[int] = mapped_column(ForeignKey("registered_models.id", ondelete="RESTRICT"))
+    version_id: Mapped[int] = mapped_column(ForeignKey("model_versions.id", ondelete="RESTRICT"))
+    package_id: Mapped[str] = mapped_column(String(64))  # copy of the version's package, immutable
+    status: Mapped[str] = mapped_column(String(8), server_default="active")
+    action: Mapped[str] = mapped_column(String(10))
+    reason: Mapped[str] = mapped_column(Text)
+    replaced_id: Mapped[int | None] = mapped_column(
+        ForeignKey("deployments.id", ondelete="RESTRICT"), nullable=True
+    )
+    deployed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class Prediction(Base):
+    """One served prediction (P4-7). Written by the serving app; never changed afterwards."""
+
+    __tablename__ = "predictions"
+    __table_args__ = (
+        CheckConstraint("latency_ms >= 0", name="latency_not_negative"),
+        Index("ix_predictions_deployment_created", "deployment_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)  # UUID text, made by the server
+    deployment_id: Mapped[int] = mapped_column(ForeignKey("deployments.id", ondelete="RESTRICT"))
+    model_version: Mapped[int] = mapped_column(Integer)
+    inputs: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    output: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    latency_ms: Mapped[float] = mapped_column(Float)
+    is_simulated: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Feedback(Base):
+    """A ground-truth label for one logged prediction (P4-8). Append-only: a label is never changed
+    or removed, so a later, different label for the same prediction is refused, not applied."""
+
+    __tablename__ = "feedback"
+    __table_args__ = (
+        UniqueConstraint("prediction_id", name="prediction"),
+        CheckConstraint("char_length(true_value) BETWEEN 1 AND 200", name="true_value_length"),
+        Index("ix_feedback_deployment_id", "deployment_id", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    prediction_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("predictions.id", ondelete="RESTRICT")
+    )
+    deployment_id: Mapped[int] = mapped_column(ForeignKey("deployments.id", ondelete="RESTRICT"))
+    model_version: Mapped[int] = mapped_column(Integer)  # copied from the prediction, checked
+    true_value: Mapped[str] = mapped_column(Text)  # class label, or the canonical number text
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -480,6 +480,308 @@
         "title": "DatasetModel",
         "type": "object"
       },
+      "DeploymentDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "deploy",
+              "switch",
+              "rollback"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "algorithm": {
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "deployed_at": {
+            "title": "Deployed At",
+            "type": "string"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Reason"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "package_id": {
+            "title": "Package Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "registry_status": {
+            "description": "The version's registry status now; it can differ from when it was deployed.",
+            "enum": [
+              "development",
+              "staging",
+              "production",
+              "archived"
+            ],
+            "title": "Registry Status",
+            "type": "string"
+          },
+          "replaced_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced Id"
+          },
+          "serving": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ServingReportModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The serving app's state right after this change or read."
+          },
+          "status": {
+            "enum": [
+              "active",
+              "ended"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "task": {
+            "title": "Task",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "model",
+          "version",
+          "package_id",
+          "status",
+          "action",
+          "reason",
+          "replaced_id",
+          "deployed_at",
+          "ended_at",
+          "end_reason",
+          "registry_status",
+          "task",
+          "algorithm"
+        ],
+        "title": "DeploymentDetail",
+        "type": "object"
+      },
+      "DeploymentList": {
+        "additionalProperties": false,
+        "properties": {
+          "deployments": {
+            "items": {
+              "$ref": "#/components/schemas/DeploymentModel"
+            },
+            "title": "Deployments",
+            "type": "array"
+          },
+          "next_before_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass as `before_id` for the next page.",
+            "title": "Next Before Id"
+          }
+        },
+        "required": [
+          "deployments",
+          "next_before_id"
+        ],
+        "title": "DeploymentList",
+        "type": "object"
+      },
+      "DeploymentModel": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "deploy",
+              "switch",
+              "rollback"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "algorithm": {
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "deployed_at": {
+            "title": "Deployed At",
+            "type": "string"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Reason"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "package_id": {
+            "title": "Package Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "registry_status": {
+            "description": "The version's registry status now; it can differ from when it was deployed.",
+            "enum": [
+              "development",
+              "staging",
+              "production",
+              "archived"
+            ],
+            "title": "Registry Status",
+            "type": "string"
+          },
+          "replaced_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced Id"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "ended"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "task": {
+            "title": "Task",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "model",
+          "version",
+          "package_id",
+          "status",
+          "action",
+          "reason",
+          "replaced_id",
+          "deployed_at",
+          "ended_at",
+          "end_reason",
+          "registry_status",
+          "task",
+          "algorithm"
+        ],
+        "title": "DeploymentModel",
+        "type": "object"
+      },
+      "DeploymentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+            "title": "Model",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "version": {
+            "maximum": 9999999.0,
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "model",
+          "version",
+          "reason"
+        ],
+        "title": "DeploymentRequest",
+        "type": "object"
+      },
       "ErrorBody": {
         "additionalProperties": false,
         "properties": {
@@ -1515,6 +1817,353 @@
         "title": "JobSummary",
         "type": "object"
       },
+      "LabelList": {
+        "additionalProperties": false,
+        "properties": {
+          "deployment_id": {
+            "title": "Deployment Id",
+            "type": "integer"
+          },
+          "labels": {
+            "items": {
+              "$ref": "#/components/schemas/LabelModel"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "next_before_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass as `before_id` for the next page.",
+            "title": "Next Before Id"
+          }
+        },
+        "required": [
+          "deployment_id",
+          "labels",
+          "next_before_id"
+        ],
+        "title": "LabelList",
+        "type": "object"
+      },
+      "LabelModel": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "deployment_id": {
+            "title": "Deployment Id",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_simulated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Simulated"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "integer"
+          },
+          "prediction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the model predicted for this row.",
+            "title": "Prediction"
+          },
+          "prediction_id": {
+            "title": "Prediction Id",
+            "type": "string"
+          },
+          "true_value": {
+            "title": "True Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "prediction_id",
+          "deployment_id",
+          "model_version",
+          "true_value",
+          "created_at",
+          "prediction",
+          "is_simulated"
+        ],
+        "title": "LabelModel",
+        "type": "object"
+      },
+      "LiveByTraffic": {
+        "additionalProperties": false,
+        "properties": {
+          "real": {
+            "$ref": "#/components/schemas/TrafficCounts"
+          },
+          "simulated": {
+            "$ref": "#/components/schemas/TrafficCounts"
+          }
+        },
+        "required": [
+          "real",
+          "simulated"
+        ],
+        "title": "LiveByTraffic",
+        "type": "object"
+      },
+      "LiveCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "labelled": {
+            "description": "Of those, how many have a true value. Only these are scored.",
+            "title": "Labelled",
+            "type": "integer"
+          },
+          "predictions": {
+            "description": "Logged predictions in the chosen scope.",
+            "title": "Predictions",
+            "type": "integer"
+          },
+          "unlabelled": {
+            "description": "Excluded from every metric.",
+            "title": "Unlabelled",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "predictions",
+          "labelled",
+          "unlabelled"
+        ],
+        "title": "LiveCounts",
+        "type": "object"
+      },
+      "LiveMetrics": {
+        "additionalProperties": false,
+        "properties": {
+          "classes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classes"
+          },
+          "confusion_matrix": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confusion Matrix"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Metrics",
+            "type": "object"
+          },
+          "per_class": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Class"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "source": {
+            "const": "live_feedback",
+            "title": "Source",
+            "type": "string"
+          },
+          "undefined": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Undefined",
+            "type": "object"
+          },
+          "window": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Window",
+            "type": "object"
+          }
+        },
+        "required": [
+          "source",
+          "window",
+          "rows",
+          "metrics",
+          "undefined"
+        ],
+        "title": "LiveMetrics",
+        "type": "object"
+      },
+      "LivePerformance": {
+        "additionalProperties": false,
+        "properties": {
+          "by_traffic": {
+            "$ref": "#/components/schemas/LiveByTraffic"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/LiveCounts"
+          },
+          "deployment_id": {
+            "title": "Deployment Id",
+            "type": "integer"
+          },
+          "live": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LiveMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Metrics computed from labelled live predictions only."
+          },
+          "min_labelled": {
+            "title": "Min Labelled",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "offline_reference": {
+            "$ref": "#/components/schemas/OfflineReference",
+            "description": "The stored offline final-test summary: a different thing, shown separately."
+          },
+          "rows_scored": {
+            "title": "Rows Scored",
+            "type": "integer"
+          },
+          "scope": {
+            "enum": [
+              "real",
+              "simulated",
+              "all"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "status": {
+            "description": "`ok`: `live` holds metrics. Otherwise `live` is null and `notes` says why; `insufficient_labels` means fewer than `min_labelled` labelled predictions.",
+            "enum": [
+              "no_predictions",
+              "no_labels",
+              "insufficient_labels",
+              "ok",
+              "not_computable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "task": {
+            "enum": [
+              "classification",
+              "regression"
+            ],
+            "title": "Task",
+            "type": "string"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deployment_id",
+          "model",
+          "version",
+          "task",
+          "scope",
+          "status",
+          "min_labelled",
+          "counts",
+          "by_traffic",
+          "rows_scored",
+          "truncated",
+          "live",
+          "offline_reference",
+          "notes"
+        ],
+        "title": "LivePerformance",
+        "type": "object"
+      },
       "MirrorCheck": {
         "additionalProperties": false,
         "properties": {
@@ -2093,6 +2742,87 @@
         "title": "NumericStatsModel",
         "type": "object"
       },
+      "OfflineReference": {
+        "additionalProperties": false,
+        "properties": {
+          "limitation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limitation"
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metrics"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          },
+          "source": {
+            "const": "offline_final_test",
+            "title": "Source",
+            "type": "string"
+          },
+          "undefined": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undefined"
+          }
+        },
+        "required": [
+          "source",
+          "metrics",
+          "rows",
+          "undefined",
+          "limitation",
+          "note"
+        ],
+        "title": "OfflineReference",
+        "type": "object"
+      },
       "ParamModel": {
         "additionalProperties": false,
         "properties": {
@@ -2623,6 +3353,62 @@
         "title": "RollbackResult",
         "type": "object"
       },
+      "ServingReportModel": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "loaded_deployment_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loaded Deployment Id"
+          },
+          "model_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model State"
+          },
+          "state": {
+            "description": "`in_sync`: the serving app serves exactly the active deployment (or none, if none is active). `out_of_sync`: it answered but is serving something else, or could not load the deployment (see `error`). `unreachable`: it did not answer; it will pick the deployment up from PostgreSQL when it starts or polls.",
+            "enum": [
+              "in_sync",
+              "out_of_sync",
+              "unreachable"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "loaded_deployment_id",
+          "model_state",
+          "error"
+        ],
+        "title": "ServingReportModel",
+        "type": "object"
+      },
       "SyncResult": {
         "additionalProperties": false,
         "properties": {
@@ -2907,6 +3693,25 @@
           "id_like_unique_ratio"
         ],
         "title": "ThresholdsModel",
+        "type": "object"
+      },
+      "TrafficCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "labelled": {
+            "title": "Labelled",
+            "type": "integer"
+          },
+          "predictions": {
+            "title": "Predictions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "predictions",
+          "labelled"
+        ],
+        "title": "TrafficCounts",
         "type": "object"
       },
       "UploadInfo": {
@@ -4233,6 +5038,1221 @@
         "summary": "Rule-based validation findings",
         "tags": [
           "reports"
+        ]
+      }
+    },
+    "/deployments": {
+      "get": {
+        "operationId": "list_deployments_deployments_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "ended"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 9223372036854775807,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the API does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such deployment, model or version"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The change conflicts with the deployment or registry state"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Invalid input"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The deployment tables are not available"
+          }
+        },
+        "summary": "Deployment history, newest first",
+        "tags": [
+          "deployments"
+        ]
+      },
+      "post": {
+        "description": "Makes a `staging` or `production` version the live model, after verifying its sealed package deeply. Only one deployment is active at a time: if one is, this is refused (409 `deployment_active`); use `POST /deployments/{id}/switch`. Archiving or rolling back the registry status of a deployed version does not undeploy it.",
+        "operationId": "deploy_deployments_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeploymentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the API does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such deployment, model or version"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The change conflicts with the deployment or registry state"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Invalid input"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The deployment tables are not available"
+          }
+        },
+        "summary": "Deploy a registered model version",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/deployments/active": {
+      "get": {
+        "operationId": "active_deployment_deployments_active_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the API does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such deployment, model or version"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The change conflicts with the deployment or registry state"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Invalid input"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The deployment tables are not available"
+          }
+        },
+        "summary": "The active deployment and the serving app's state",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/deployments/rollback": {
+      "post": {
+        "description": "Makes the version that the active deployment replaced live again, as a new deployment with action `rollback`. Only a switch can be rolled back: a first deploy has nothing before it and a rollback is not undone by another rollback (409 `no_previous_deployment`).",
+        "operationId": "rollback_deployments_rollback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the API does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such deployment, model or version"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The change conflicts with the deployment or registry state"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Invalid input"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The deployment tables are not available"
+          }
+        },
+        "summary": "Undo the last switch",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/deployments/{deployment_id}": {
+      "get": {
+        "operationId": "get_deployment_deployments__deployment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deployment_id",
+            "required": true,
+            "schema": {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Deployment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the API does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such deployment, model or version"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The change conflicts with the deployment or registry state"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Invalid input"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The deployment tables are not available"
+          }
+        },
+        "summary": "One deployment",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/deployments/{deployment_id}/feedback": {
+      "get": {
+        "operationId": "deployment_feedback_deployments__deployment_id__feedback_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deployment_id",
+            "required": true,
+            "schema": {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Deployment Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 9223372036854775807,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the API does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such deployment, model or version"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The change conflicts with the deployment or registry state"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Invalid input"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The deployment tables are not available"
+          }
+        },
+        "summary": "The labels recorded for a deployment's predictions, newest first",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/deployments/{deployment_id}/performance": {
+      "get": {
+        "description": "Computed on demand with the same metric code as the offline evaluation, but only over predictions that have a true value (`POST /feedback` on the serving app). Unlabelled predictions are counted and excluded. With fewer than `min_labelled` labelled predictions you get a status and the counts, not metrics. `scope` chooses real traffic (default), simulated traffic or both. The stored offline final-test summary is returned separately in `offline_reference`; it is a different measurement and is never mixed in. Nothing here reads a dataset or the held-out test part.",
+        "operationId": "live_performance_deployments__deployment_id__performance_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deployment_id",
+            "required": true,
+            "schema": {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Deployment Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "real",
+              "enum": [
+                "real",
+                "simulated",
+                "all"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_labelled",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100000,
+              "minimum": 1,
+              "title": "Min Labelled",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LivePerformance"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the API does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such deployment, model or version"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The change conflicts with the deployment or registry state"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Invalid input"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The deployment tables are not available"
+          }
+        },
+        "summary": "Live performance of a deployment, from labelled predictions only",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/deployments/{deployment_id}/switch": {
+      "post": {
+        "description": "Ends the active deployment and makes another `staging` or `production` version live in one transaction. `deployment_id` must be the active deployment.",
+        "operationId": "switch_deployments__deployment_id__switch_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deployment_id",
+            "required": true,
+            "schema": {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Deployment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeploymentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the API does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such deployment, model or version"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The change conflicts with the deployment or registry state"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Invalid input"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The deployment tables are not available"
+          }
+        },
+        "summary": "Switch the live model to another version",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/deployments/{deployment_id}/undeploy": {
+      "post": {
+        "operationId": "undeploy_deployments__deployment_id__undeploy_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deployment_id",
+            "required": true,
+            "schema": {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Deployment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the API does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such deployment, model or version"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The change conflicts with the deployment or registry state"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Invalid input"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The deployment tables are not available"
+          }
+        },
+        "summary": "Stop serving: no model is live afterwards",
+        "tags": [
+          "deployments"
         ]
       }
     },

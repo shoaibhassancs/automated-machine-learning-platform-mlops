@@ -12,6 +12,7 @@ from fastapi import FastAPI
 
 from automl_ops.api_control import errors
 from automl_ops.api_control.datasets import Context, router
+from automl_ops.api_control.deployments import router as deployments_router
 from automl_ops.api_control.jobs import router as jobs_router
 from automl_ops.api_control.registry import router as registry_router
 from automl_ops.api_control.security import LocalSecurityMiddleware
@@ -21,10 +22,13 @@ from automl_ops.db import migrate
 from automl_ops.db.catalog import CatalogedDatasetStore
 from automl_ops.db.config import make_engine
 from automl_ops.db.migrate import DbStatus
+from automl_ops.deployments import DeploymentRepository
+from automl_ops.feedback import FeedbackRepository
 from automl_ops.job_tracking import tracking_problem
 from automl_ops.jobs import JobRepository, worker_running
 from automl_ops.registry import RegistryRepository
 from automl_ops.registry_mirror import Mirror
+from automl_ops.serving_client import ServingClient
 
 API_VERSION = "0.1.0"
 
@@ -59,6 +63,9 @@ def create_app(
     tracking_check: Callable[[], str | None] | None = None,
     registry: RegistryRepository | None = None,
     mirror: Mirror | None = None,
+    deployments: DeploymentRepository | None = None,
+    serving: ServingClient | None = None,
+    feedback: FeedbackRepository | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -96,6 +103,9 @@ def create_app(
         jobs=jobs,
         registry=registry,
         mirror=mirror,
+        deployments=deployments,
+        serving=serving,
+        feedback=feedback,
         worker_state=worker_state or (lambda: "unknown"),
         tracking_problem=tracking_check or (lambda: None),
     )
@@ -103,11 +113,13 @@ def create_app(
         *router.routes,
         *jobs_router.routes,
         *registry_router.routes,
+        *deployments_router.routes,
     ]
     errors.install(app)
     app.include_router(router)
     app.include_router(jobs_router)
     app.include_router(registry_router)
+    app.include_router(deployments_router)
     app.add_middleware(LocalSecurityMiddleware, settings=settings)
     return app
 
@@ -133,6 +145,9 @@ def build_app(settings: ApiSettings | None = None) -> FastAPI:
         jobs=JobRepository(engine),
         registry=RegistryRepository(engine, settings.models_root),
         mirror=Mirror(engine, settings.models_root),
+        deployments=DeploymentRepository(engine, settings.models_root),
+        serving=ServingClient(settings.serving_port),
+        feedback=FeedbackRepository(engine),
         worker_state=lambda: "running" if worker_running(engine) else "stopped",
         tracking_check=tracking_problem,
     )

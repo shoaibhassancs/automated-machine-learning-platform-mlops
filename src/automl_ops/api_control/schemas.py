@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from automl_ops.api_serving.schemas import LabelModel
 from automl_ops.profile import Kind
 from automl_ops.task import TaskType
 from automl_ops.validate import Severity
@@ -559,3 +560,135 @@ class ReconcileResult(Strict):
     actions: list[dict[str, Any]]
     result: list[MirrorFinding]
     error: str | None
+
+
+# --------------------------------------------------------------------------------------------
+# Deployments (P4-7)
+# --------------------------------------------------------------------------------------------
+
+
+class DeploymentRequest(Strict):
+    model: ModelName
+    version: Annotated[int, Field(ge=1, le=9_999_999)]
+    reason: Reason
+
+
+class ServingReportModel(Strict):
+    state: Literal["in_sync", "out_of_sync", "unreachable"] = Field(
+        description=(
+            "`in_sync`: the serving app serves exactly the active deployment (or none, if none is "
+            "active). `out_of_sync`: it answered but is serving something else, or could not load "
+            "the deployment (see `error`). `unreachable`: it did not answer; it will pick the "
+            "deployment up from PostgreSQL when it starts or polls."
+        )
+    )
+    loaded_deployment_id: int | None
+    model_state: str | None
+    error: str | None
+
+
+class DeploymentModel(Strict):
+    id: int
+    model: str
+    version: int
+    package_id: str
+    status: Literal["active", "ended"]
+    action: Literal["deploy", "switch", "rollback"]
+    reason: str
+    replaced_id: int | None
+    deployed_at: str
+    ended_at: str | None
+    end_reason: str | None
+    registry_status: ModelStatus = Field(
+        description="The version's registry status now; it can differ from when it was deployed."
+    )
+    task: str
+    algorithm: str
+
+
+class DeploymentDetail(DeploymentModel):
+    serving: ServingReportModel | None = Field(
+        default=None, description="The serving app's state right after this change or read."
+    )
+
+
+class DeploymentList(Strict):
+    deployments: list[DeploymentModel]
+    next_before_id: int | None = Field(description="Pass as `before_id` for the next page.")
+
+
+# --------------------------------------------------------------------------------------------
+# Feedback and live performance (P4-8)
+# --------------------------------------------------------------------------------------------
+
+
+class LabelList(Strict):
+    deployment_id: int
+    labels: list[LabelModel]
+    next_before_id: int | None = Field(description="Pass as `before_id` for the next page.")
+
+
+class TrafficCounts(Strict):
+    predictions: int
+    labelled: int
+
+
+class LiveCounts(Strict):
+    predictions: int = Field(description="Logged predictions in the chosen scope.")
+    labelled: int = Field(
+        description="Of those, how many have a true value. Only these are scored."
+    )
+    unlabelled: int = Field(description="Excluded from every metric.")
+
+
+class LiveByTraffic(Strict):
+    real: TrafficCounts
+    simulated: TrafficCounts
+
+
+class LiveMetrics(Strict):
+    source: Literal["live_feedback"]
+    window: dict[str, str]
+    rows: int
+    metrics: dict[str, float | None]
+    undefined: dict[str, str]
+    classes: list[str] | None = None
+    confusion_matrix: list[list[int]] | None = None
+    per_class: list[dict[str, Any]] | None = None
+
+
+class OfflineReference(Strict):
+    source: Literal["offline_final_test"]
+    metrics: dict[str, float | None] | None
+    rows: int | None
+    undefined: dict[str, str] | None
+    limitation: str | None
+    note: str
+
+
+class LivePerformance(Strict):
+    deployment_id: int
+    model: str
+    version: int
+    task: Literal["classification", "regression"]
+    scope: Literal["real", "simulated", "all"]
+    status: Literal[
+        "no_predictions", "no_labels", "insufficient_labels", "ok", "not_computable"
+    ] = Field(
+        description=(
+            "`ok`: `live` holds metrics. Otherwise `live` is null and `notes` says why; "
+            "`insufficient_labels` means fewer than `min_labelled` labelled predictions."
+        )
+    )
+    min_labelled: int
+    counts: LiveCounts
+    by_traffic: LiveByTraffic
+    rows_scored: int
+    truncated: bool
+    live: LiveMetrics | None = Field(
+        description="Metrics computed from labelled live predictions only."
+    )
+    offline_reference: OfflineReference = Field(
+        description="The stored offline final-test summary: a different thing, shown separately."
+    )
+    notes: list[str]
