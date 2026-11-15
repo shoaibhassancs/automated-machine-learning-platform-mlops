@@ -1,0 +1,37 @@
+{
+  "deployment_id": 1,
+  "scope": "simulated",
+  "predictions": [
+    {
+      "id": "fcc5afb6-8b8e-49ca-be8a-007247c12eb1",
+      "created_at": "2026-11-14T04:02:25.876873+00:00",
+      "model_version": 1,
+      "is_simulated": true,
+      "prediction": 16.793382541609844,
+      "confidence": null,
+      "latency_ms": 4.776,
+      "true_value": null
+    },
+    {
+      "id": "fb8471b7-366f-408d-a713-563152222694",
+      "created_at": "2026-11-14T04:02:25.876873+00:00",
+      "model_version": 1,
+      "is_simulated": true,
+      "prediction": 13.1984297014912,
+      "confidence": null,
+      "latency_ms": 4.776,
+      "true_value": null
+    },
+    {
+      "id": "f5043e49-3024-43ad-a79d-e3f2b5f57e8e",
+      "created_at": "2026-11-14T04:02:25.876873+00:00",
+      "model_version": 1,
+      "is_simulated": true,
+      "prediction": 14.236511721056669,
+      "confidence": null,
+      "latency_ms": 4.776,
+      "true_value": null
+    }
+  ],
+  "next_before": "1794628945876873.f5043e49-3024-43ad-a79d-e3f2b5f57e8e"
+}

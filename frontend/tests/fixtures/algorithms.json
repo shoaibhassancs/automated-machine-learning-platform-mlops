@@ -1,0 +1,250 @@
+{
+  "algorithms": [
+    {
+      "key": "logistic_regression",
+      "label": "Logistic regression",
+      "task": "classification",
+      "scale_numeric": true,
+      "params": [
+        {
+          "name": "C",
+          "kind": "float",
+          "default": 1.0,
+          "minimum": 0.0001,
+          "maximum": 10000.0,
+          "choices": [],
+          "description": "inverse regularisation strength (smaller = stronger)"
+        },
+        {
+          "name": "max_iter",
+          "kind": "int",
+          "default": 1000,
+          "minimum": 50.0,
+          "maximum": 5000.0,
+          "choices": [],
+          "description": "maximum solver iterations"
+        },
+        {
+          "name": "class_weight",
+          "kind": "choice",
+          "default": "none",
+          "minimum": null,
+          "maximum": null,
+          "choices": ["none", "balanced"],
+          "description": "'balanced' weights classes inversely to their frequency"
+        }
+      ]
+    },
+    {
+      "key": "random_forest",
+      "label": "Random forest",
+      "task": "classification",
+      "scale_numeric": false,
+      "params": [
+        {
+          "name": "n_estimators",
+          "kind": "int",
+          "default": 100,
+          "minimum": 10.0,
+          "maximum": 500.0,
+          "choices": [],
+          "description": "number of trees"
+        },
+        {
+          "name": "max_depth",
+          "kind": "optional_int",
+          "default": null,
+          "minimum": 1.0,
+          "maximum": 50.0,
+          "choices": [],
+          "description": "maximum tree depth (null = no limit)"
+        },
+        {
+          "name": "min_samples_leaf",
+          "kind": "int",
+          "default": 1,
+          "minimum": 1.0,
+          "maximum": 50.0,
+          "choices": [],
+          "description": "minimum rows in a leaf"
+        },
+        {
+          "name": "max_features",
+          "kind": "choice",
+          "default": "sqrt",
+          "minimum": null,
+          "maximum": null,
+          "choices": ["sqrt", "log2", "all"],
+          "description": "features considered per split ('all' = every feature)"
+        }
+      ]
+    },
+    {
+      "key": "hist_gradient_boosting",
+      "label": "Histogram gradient boosting",
+      "task": "classification",
+      "scale_numeric": false,
+      "params": [
+        {
+          "name": "max_iter",
+          "kind": "int",
+          "default": 100,
+          "minimum": 10.0,
+          "maximum": 500.0,
+          "choices": [],
+          "description": "number of boosting rounds"
+        },
+        {
+          "name": "learning_rate",
+          "kind": "float",
+          "default": 0.1,
+          "minimum": 0.01,
+          "maximum": 1.0,
+          "choices": [],
+          "description": "shrinkage per round"
+        },
+        {
+          "name": "max_depth",
+          "kind": "optional_int",
+          "default": null,
+          "minimum": 1.0,
+          "maximum": 30.0,
+          "choices": [],
+          "description": "maximum tree depth (null = no limit)"
+        },
+        {
+          "name": "min_samples_leaf",
+          "kind": "int",
+          "default": 20,
+          "minimum": 1.0,
+          "maximum": 200.0,
+          "choices": [],
+          "description": "minimum rows in a leaf"
+        },
+        {
+          "name": "l2_regularization",
+          "kind": "float",
+          "default": 0.0,
+          "minimum": 0.0,
+          "maximum": 100.0,
+          "choices": [],
+          "description": "L2 penalty on leaf values"
+        }
+      ]
+    },
+    {
+      "key": "ridge",
+      "label": "Ridge regression",
+      "task": "regression",
+      "scale_numeric": true,
+      "params": [
+        {
+          "name": "alpha",
+          "kind": "float",
+          "default": 1.0,
+          "minimum": 0.0001,
+          "maximum": 10000.0,
+          "choices": [],
+          "description": "regularisation strength"
+        }
+      ]
+    },
+    {
+      "key": "random_forest",
+      "label": "Random forest",
+      "task": "regression",
+      "scale_numeric": false,
+      "params": [
+        {
+          "name": "n_estimators",
+          "kind": "int",
+          "default": 100,
+          "minimum": 10.0,
+          "maximum": 500.0,
+          "choices": [],
+          "description": "number of trees"
+        },
+        {
+          "name": "max_depth",
+          "kind": "optional_int",
+          "default": null,
+          "minimum": 1.0,
+          "maximum": 50.0,
+          "choices": [],
+          "description": "maximum tree depth (null = no limit)"
+        },
+        {
+          "name": "min_samples_leaf",
+          "kind": "int",
+          "default": 1,
+          "minimum": 1.0,
+          "maximum": 50.0,
+          "choices": [],
+          "description": "minimum rows in a leaf"
+        },
+        {
+          "name": "max_features",
+          "kind": "choice",
+          "default": "all",
+          "minimum": null,
+          "maximum": null,
+          "choices": ["sqrt", "log2", "all"],
+          "description": "features considered per split ('all' = every feature)"
+        }
+      ]
+    },
+    {
+      "key": "hist_gradient_boosting",
+      "label": "Histogram gradient boosting",
+      "task": "regression",
+      "scale_numeric": false,
+      "params": [
+        {
+          "name": "max_iter",
+          "kind": "int",
+          "default": 100,
+          "minimum": 10.0,
+          "maximum": 500.0,
+          "choices": [],
+          "description": "number of boosting rounds"
+        },
+        {
+          "name": "learning_rate",
+          "kind": "float",
+          "default": 0.1,
+          "minimum": 0.01,
+          "maximum": 1.0,
+          "choices": [],
+          "description": "shrinkage per round"
+        },
+        {
+          "name": "max_depth",
+          "kind": "optional_int",
+          "default": null,
+          "minimum": 1.0,
+          "maximum": 30.0,
+          "choices": [],
+          "description": "maximum tree depth (null = no limit)"
+        },
+        {
+          "name": "min_samples_leaf",
+          "kind": "int",
+          "default": 20,
+          "minimum": 1.0,
+          "maximum": 200.0,
+          "choices": [],
+          "description": "minimum rows in a leaf"
+        },
+        {
+          "name": "l2_regularization",
+          "kind": "float",
+          "default": 0.0,
+          "minimum": 0.0,
+          "maximum": 100.0,
+          "choices": [],
+          "description": "L2 penalty on leaf values"
+        }
+      ]
+    }
+  ]
+}

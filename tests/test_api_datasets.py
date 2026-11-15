@@ -541,6 +541,8 @@ def test_openapi_file_is_current_and_describes_every_error() -> None:
         "/deployments/{deployment_id}/undeploy",
         "/deployments/{deployment_id}/performance",
         "/deployments/{deployment_id}/feedback",
+        "/deployments/{deployment_id}/predictions",
+        "/deployments/{deployment_id}/activity",
         "/models/{name}/versions/{number}/reference",
         "/deployments/{deployment_id}/monitor",
         "/deployments/{deployment_id}/monitoring",

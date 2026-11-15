@@ -1,0 +1,29 @@
+{
+  "jobs": [
+    {
+      "id": 1,
+      "kind": "final",
+      "status": "succeeded",
+      "phase": "done",
+      "dataset": "abalone-pool@v1",
+      "dataset_sha256": "47ed8f7a92c9c6b3451f0b073d824008c9340bc09d2077ff57fb5cc8246c50ae",
+      "track": true,
+      "tracking_state": "logged",
+      "cancel_requested": false,
+      "stale": false,
+      "progress": {
+        "event": "algorithm_finished",
+        "algorithm": "random_forest",
+        "algorithm_index": 2,
+        "algorithm_count": 2,
+        "fold": null,
+        "folds": 3
+      },
+      "error": null,
+      "created_at": "2026-11-14T04:02:16.504405+00:00",
+      "started_at": "2026-11-14T04:02:17.928611+00:00",
+      "finished_at": "2026-11-14T04:02:19.908148+00:00"
+    }
+  ],
+  "next_before_id": null
+}

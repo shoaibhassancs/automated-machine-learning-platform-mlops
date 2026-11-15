@@ -76,6 +76,17 @@ class ModelInfo(Strict):
     max_rows: int
 
 
+class IsolationReport(Strict):
+    """Whether this process is wired to a throwaway stack (E2E safety). Booleans, reason codes and
+    two one-way identifiers only: no path, host, user, password or token."""
+
+    isolated: bool
+    checks: dict[str, bool]
+    reasons: list[str]
+    database_id: str | None
+    run_id: str | None
+
+
 class HealthResponse(Strict):
     status: Literal["ok"] = Field(description="The process is up.")
     ready: bool = Field(description="A verified model is being served.")
@@ -85,6 +96,7 @@ class HealthResponse(Strict):
     loaded_deployment_id: int | None
     error: str | None
     checked_at: str | None
+    isolation: IsolationReport | None = None
 
 
 class FeedbackRequest(Strict):

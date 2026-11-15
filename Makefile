@@ -1,4 +1,4 @@
-.PHONY: lint test typecheck check db-up db-stop api openapi worker serve simulate e2e
+.PHONY: lint test typecheck check db-up db-stop api openapi worker serve simulate e2e ui-install ui-dev ui-demo ui-check ui-e2e
 
 lint:
 	uv run ruff check .
@@ -41,9 +41,28 @@ worker:
 	uv run python scripts/worker.py
 
 # Traffic simulator (P4-10): normal, shifted, then normal demo traffic against `make api` + `make serve`
-# (needs a deployed model); see docs/simulator.md. `make e2e` runs the whole backend story and WRITES rows
-# to the database the stack uses; see scripts/e2e_demo.py.
+# (needs a deployed model); see docs/simulator.md. `make e2e` runs the whole backend story on a THROWAWAY stack it
+# creates and removes itself (new database, temp folders); see scripts/e2e_isolated.py.
 simulate:
 	uv run python scripts/simulate_traffic.py demo abalone
 e2e:
-	uv run python scripts/e2e_demo.py abalone
+	uv run python scripts/e2e_isolated.py abalone
+
+# Frontend (Phase 5, frontend/). `ui-dev` serves http://localhost:5173, the one browser origin the API
+# allows by default, and talks to `make api` / `make serve`. `ui-demo` builds a THROWAWAY seeded backend
+# (new database, temp folders, SQLite MLflow; removed on Ctrl-C) plus the UI, so the real data is never used.
+# `ui-e2e` runs the Playwright suite on two throwaway stacks it creates and removes itself.
+ui-install:
+	cd frontend && npm ci
+
+ui-dev:
+	cd frontend && npm run dev
+
+ui-demo:
+	uv run python scripts/ui_stack.py --seed demo --with-ui --api-port 18100 --serve-port 18200
+
+ui-check:
+	cd frontend && npm run lint && npm run format:check && npm run typecheck && npm run check:api && npm test && npm run build
+
+ui-e2e:
+	cd frontend && npm run e2e

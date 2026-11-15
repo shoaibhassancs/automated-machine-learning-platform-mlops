@@ -325,16 +325,15 @@ def test_normal_shifted_and_recovery_with_the_default_thresholds(rig: Rig, tmp_p
     assert {a["rule"] for a in shifted.alerts if a["status"] != "resolved"} >= {
         "drifted_feature_share"
     }
-    # The two drift alerts clear. `performance_drop` does NOT: live performance is computed over all
-    # labelled history in scope (up to 50,000 labels, P4-8), not over the 1,000-row drift window, so
-    # the shifted phase's wrong predictions keep it above the threshold until enough good labels
-    # dilute them. Observed and recorded; a window-aligned option is a separate proposal.
+    # All three alerts clear. `performance_drop` is scored over the labels inside the same
+    # 1,000-row window as the drift verdict, so it recovers when traffic does (it stayed open
+    # before, when it was computed over all labelled history).
     by_rule = {a["rule"]: a for a in recovery.alerts}
     assert by_rule["drifted_feature_share"]["status"] == "resolved"
     assert by_rule["prediction_shift"]["status"] == "resolved"
-    assert by_rule["performance_drop"]["status"] == "open"
-    assert by_rule["performance_drop"]["occurrences"] == 2
-    assert recovery.monitoring["performance"]["triggered"] is True
+    assert by_rule["performance_drop"]["status"] == "resolved"
+    assert by_rule["performance_drop"]["occurrences"] == 1
+    assert recovery.monitoring["performance"]["triggered"] is False
     # (the 1,100-row stream differs a little from the training sample in `z` by chance: one feature
     # of three flags, below the share threshold of one half, so no alert)
     assert set(recovery.monitoring["drifted_features"]) <= {"z"}

@@ -1,18 +1,19 @@
-"""The backend lifecycle against a running stack (P4-10, backend half of BUILD_PLAN Step 35).
+"""The backend lifecycle against an isolated stack (P4-10, backend half of BUILD_PLAN Step 35).
 
-    uv run python scripts/e2e_demo.py abalone
+    make e2e        # creates, uses and removes a throwaway stack (recommended)
+    uv run python scripts/e2e_demo.py abalone   # only a stack made by scripts/e2e_isolated.py
 
-Needs `make db-up` with the migration head applied, then `make api`, `make serve` and `make worker`
-running (the worker with tracking configured: AUTOML_JOBS_MLFLOW_DIR or the PostgreSQL backend), and
-`make demo-data` done. It uploads the dataset's *training pool*, trains and tracks a final job,
-registers, promotes and deploys the model, then replays the monitoring stream (normal, shifted,
-normal) as simulated traffic with feedback, monitoring after each phase, and reports every stage as
-passed or failed with what was observed.
+It uploads the dataset's *training pool*, trains and tracks a final job, registers, promotes and
+deploys the model, then replays the monitoring stream (normal, shifted, normal) as simulated
+traffic with feedback, monitoring after each phase, and reports every stage as passed or failed.
 
-**It writes real rows to the database the stack uses** (a dataset version, a job, a model package,
-a model version, a deployment, predictions, labels, reports and alerts); nothing is ever deleted.
-Prints JSON; exit 0 = every stage passed, 1 = a stage failed (the story stops there), 2 = could not
-start.
+**It writes rows and model packages, so it refuses to run against anything but a stack made for
+it.** Before any write it checks (read-only) that this script's own settings and both services
+report a throwaway database, throwaway store, models and MLflow folders outside `data/`, the same
+database and run, and an empty stack. There is no flag to skip the check.
+
+Prints JSON; exit 0 = every stage passed, 1 = a stage failed (the story stops there), 2 = refused
+or could not start.
 """
 
 from __future__ import annotations
@@ -23,10 +24,13 @@ import os
 import sys
 from pathlib import Path
 
+from automl_ops.db.config import DatabaseConfigError, database_url, setting
 from automl_ops.e2e import run_story
+from automl_ops.isolation import Wiring, assess, verify_stack
 from automl_ops.simulator import LocalHttp, SimulatorError, load_stream
 
-DEMO_DIR = Path(__file__).resolve().parents[1] / "data" / "demo"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEMO_DIR = PROJECT_ROOT / "data" / "demo"
 
 
 def _port(value: int | None, env: str, default: int) -> int:
@@ -58,9 +62,26 @@ def main() -> int:
     except (OSError, ValueError, KeyError, SimulatorError) as error:
         print(f"ERROR: cannot start ({error}); run `make demo-data` first", file=sys.stderr)
         return 2
-    health = control.request("GET", "/health")
-    if health.status != 200:
-        print("ERROR: the control-plane API is not answering (make api)", file=sys.stderr)
+    try:
+        local = assess(
+            Wiring(
+                database_url(),
+                Path(setting("AUTOML_STORE_DIR") or PROJECT_ROOT / "data" / "store"),
+                Path(setting("AUTOML_MODELS_DIR") or PROJECT_ROOT / "data" / "models"),
+            )
+        )
+    except DatabaseConfigError as error:
+        print(f"ERROR: refusing to run: {error}", file=sys.stderr)
+        return 2
+    problems = verify_stack(local, control, serving)
+    if problems:
+        print(
+            "REFUSED: this is not an isolated, empty stack made for the end-to-end story. "
+            "Nothing was written. Use `make e2e`.",
+            file=sys.stderr,
+        )
+        for problem in problems:
+            print(f"  - {problem}", file=sys.stderr)
         return 2
     report = run_story(
         control,

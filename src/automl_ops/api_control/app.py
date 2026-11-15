@@ -25,6 +25,7 @@ from automl_ops.db.config import make_engine
 from automl_ops.db.migrate import DbStatus
 from automl_ops.deployments import DeploymentRepository
 from automl_ops.feedback import FeedbackRepository
+from automl_ops.isolation import NOT_ASSESSED, Isolation, Wiring, reporter
 from automl_ops.job_tracking import tracking_problem
 from automl_ops.jobs import JobRepository, worker_running
 from automl_ops.monitoring import MonitoringRepository
@@ -71,6 +72,7 @@ def create_app(
     feedback: FeedbackRepository | None = None,
     monitoring: MonitoringRepository | None = None,
     references: ReferenceService | None = None,
+    isolation: Callable[[], Isolation] | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -115,6 +117,7 @@ def create_app(
         references=references,
         worker_state=worker_state or (lambda: "unknown"),
         tracking_problem=tracking_check or (lambda: None),
+        isolation=isolation or (lambda: NOT_ASSESSED),
     )
     app.state.api_routes = [  # for the Allow header of a 405
         *router.routes,
@@ -163,4 +166,5 @@ def build_app(settings: ApiSettings | None = None) -> FastAPI:
         references=references,
         worker_state=lambda: "running" if worker_running(engine) else "stopped",
         tracking_check=tracking_problem,
+        isolation=reporter(Wiring(engine.url, settings.store_root, settings.models_root)),
     )

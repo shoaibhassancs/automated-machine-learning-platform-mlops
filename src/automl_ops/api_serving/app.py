@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -28,6 +28,7 @@ from automl_ops.api_serving.schemas import (
     FeedbackResponse,
     HealthResponse,
     InputColumn,
+    IsolationReport,
     ModelInfo,
     PredictionItem,
     PredictRequest,
@@ -44,6 +45,7 @@ from automl_ops.feedback import (
     PredictionNotFound,
     ReferenceMismatch,
 )
+from automl_ops.isolation import NOT_ASSESSED, Isolation, Wiring, reporter
 
 log = logging.getLogger("automl_ops.serving")
 API_VERSION = "0.1.0"
@@ -68,7 +70,7 @@ def _iso(value: Any) -> str | None:
     return None if value is None else str(value.isoformat())
 
 
-def _health_body(h: Health) -> HealthResponse:
+def _health_body(h: Health, isolation: Isolation) -> HealthResponse:
     return HealthResponse(
         status="ok",
         ready=h.ready,
@@ -78,6 +80,7 @@ def _health_body(h: Health) -> HealthResponse:
         loaded_deployment_id=h.loaded_deployment_id,
         error=h.error,
         checked_at=_iso(h.checked_at),
+        isolation=IsolationReport(**isolation.to_dict()),
     )
 
 
@@ -85,7 +88,17 @@ def _not_ready(error: NotReady) -> ApiError:
     return ApiError(503, error.code, error.message)
 
 
-def create_app(settings: ServingSettings, runtime: ServingRuntime) -> FastAPI:
+def create_app(
+    settings: ServingSettings,
+    runtime: ServingRuntime,
+    isolation: Callable[[], Isolation] | None = None,
+) -> FastAPI:
+    def isolated() -> Isolation:
+        try:
+            return (isolation or (lambda: NOT_ASSESSED))()
+        except Exception:  # an unreadable setting must not break the health check
+            return NOT_ASSESSED
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.predict_slots = asyncio.Semaphore(settings.predict_concurrency)
@@ -107,7 +120,7 @@ def create_app(settings: ServingSettings, runtime: ServingRuntime) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.predict_slots = asyncio.Semaphore(settings.predict_concurrency)
-    router = _routes(runtime)
+    router = _routes(runtime, isolated)
     app.state.api_routes = list(router.routes)
     errors.install(app)
     app.add_exception_handler(NotReady, _handler_not_ready)
@@ -162,12 +175,12 @@ async def _poll(runtime: ServingRuntime, interval: float) -> None:
             await asyncio.to_thread(runtime.refresh)
 
 
-def _routes(runtime: ServingRuntime) -> Any:
+def _routes(runtime: ServingRuntime, isolated: Callable[[], Isolation]) -> Any:
     router = APIRouter(responses=_ERRORS, tags=["serving"])
 
     @router.get("/health", response_model=HealthResponse, summary="Liveness and model state")
     async def health() -> HealthResponse:
-        return _health_body(runtime.health())
+        return _health_body(runtime.health(), isolated())
 
     @router.get(
         "/ready",
@@ -183,7 +196,7 @@ def _routes(runtime: ServingRuntime) -> Any:
                 h.error or "The model is not ready.",
                 {"model_state": h.model_state},
             )
-        return _health_body(h)
+        return _health_body(h, isolated())
 
     @router.post(
         "/reload",
@@ -196,7 +209,7 @@ def _routes(runtime: ServingRuntime) -> Any:
         ),
     )
     async def reload() -> HealthResponse:
-        return _health_body(await run_in_threadpool(runtime.refresh, force=True))
+        return _health_body(await run_in_threadpool(runtime.refresh, force=True), isolated())
 
     @router.get("/model", response_model=ModelInfo, summary="The model being served")
     async def model() -> ModelInfo:
@@ -288,5 +301,8 @@ def build_app(settings: ServingSettings | None = None) -> FastAPI:
     settings = settings or ServingSettings.from_environment()
     engine = make_engine(connect_timeout=2, pool_timeout=2.0)
     return create_app(
-        settings, ServingRuntime(engine, settings.models_root, retry_seconds=settings.retry_seconds)
+        settings,
+        ServingRuntime(engine, settings.models_root, retry_seconds=settings.retry_seconds),
+        # the serving app has no dataset store of its own: its models folder stands in for both
+        isolation=reporter(Wiring(engine.url, settings.models_root, settings.models_root)),
     )

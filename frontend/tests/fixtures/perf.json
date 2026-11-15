@@ -1,0 +1,56 @@
+{
+  "deployment_id": 1,
+  "model": "abalone",
+  "version": 1,
+  "task": "regression",
+  "scope": "simulated",
+  "status": "ok",
+  "min_labelled": 30,
+  "counts": {
+    "predictions": 3400,
+    "labelled": 1020,
+    "unlabelled": 2380
+  },
+  "by_traffic": {
+    "real": {
+      "predictions": 0,
+      "labelled": 0
+    },
+    "simulated": {
+      "predictions": 3400,
+      "labelled": 1020
+    }
+  },
+  "rows_scored": 1020,
+  "truncated": false,
+  "live": {
+    "source": "live_feedback",
+    "window": {
+      "first_label_at": "2026-11-14T04:02:20.922574+00:00",
+      "last_label_at": "2026-11-14T04:02:25.937356+00:00"
+    },
+    "rows": 1020,
+    "metrics": {
+      "rmse": 3.93879398345,
+      "mae": 3.04944647216,
+      "r2": -0.60308017235
+    },
+    "undefined": {},
+    "classes": null,
+    "confusion_matrix": null,
+    "per_class": null
+  },
+  "offline_reference": {
+    "source": "offline_final_test",
+    "metrics": {
+      "r2": 0.504085146651,
+      "mae": 1.60930375178,
+      "rmse": 2.20743936745
+    },
+    "rows": 585,
+    "undefined": {},
+    "limitation": "This result comes from the held-out test part, read once for this package. The same test part can be reused by other jobs on the same dataset version (an open decision), and repeated use across jobs can influence model choices. It is not independent or leakage-proof.",
+    "note": "Offline reference: the one final test made before this version was registered. It is not comparable to live numbers without care: different rows, a different time, and the live labels may be a biased sample."
+  },
+  "notes": ["simulated traffic is included in or reported next to these numbers"]
+}

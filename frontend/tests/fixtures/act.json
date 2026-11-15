@@ -1,0 +1,35 @@
+{
+  "deployment_id": 1,
+  "scope": "all",
+  "since": "2026-11-14T04:02:00+00:00",
+  "until": "2026-11-14T04:02:36.136527+00:00",
+  "bucket": "minute",
+  "buckets": [
+    {
+      "start": "2026-11-14T04:02:00+00:00",
+      "real": {
+        "predictions": 0,
+        "labelled": 0
+      },
+      "simulated": {
+        "predictions": 3400,
+        "labelled": 1020
+      }
+    }
+  ],
+  "totals": {
+    "real": {
+      "predictions": 0,
+      "labelled": 0
+    },
+    "simulated": {
+      "predictions": 3400,
+      "labelled": 1020
+    }
+  },
+  "latency_ms": {
+    "mean": 5.115,
+    "p95": 6.249,
+    "predictions": 3400
+  }
+}

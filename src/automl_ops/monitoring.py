@@ -38,13 +38,15 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 
 from automl_ops.deployments import DeploymentNotFound
-from automl_ops.feedback import FeedbackRepository
+from automl_ops.feedback import FeedbackRepository, metric_sampler, window_performance
 from automl_ops.monitor import (
     MonitorError,
     Thresholds,
+    bootstrap_seed,
     build_summary,
     evaluate_rules,
     performance_comparison,
+    performance_verdict,
 )
 from automl_ops.reference import ReferenceService
 
@@ -221,9 +223,10 @@ class MonitoringRepository:
             )
         status, summary, error = "ok", None, None
         window: list[Any] = []
+        labelled: list[Any] = []
         try:
             reference = self.references.data(ref.id)
-            window = self._window(deployment_id, scope, th.window)
+            window, labelled = self._window(deployment_id, scope, th.window)
             context = {
                 "reference": {
                     "id": reference.meta.id,
@@ -241,10 +244,10 @@ class MonitoringRepository:
                     if scope == "simulated"
                     else "real traffic only (simulated predictions are excluded)",
                 },
-                "window": {"rows": len(window), "max_rows": th.window},
+                "window": {"rows": len(window), "max_rows": th.window, "labelled": len(labelled)},
             }
             try:
-                summary = self._summarise(dep, reference, window, scope, th, context)
+                summary = self._summarise(dep, reference, window, labelled, th, context)
             except MonitorError as short:
                 status, summary = (
                     "insufficient_data",
@@ -258,26 +261,39 @@ class MonitoringRepository:
             deployment_id, ref.id, scope, status, window, th, summary, error, started
         )
 
-    def _window(self, deployment_id: int, scope: Scope, size: int) -> list[Any]:
+    def _window(self, deployment_id: int, scope: Scope, size: int) -> tuple[list[Any], list[Any]]:
+        """The window's predictions and the labels of exactly those predictions, read in one
+        snapshot: drift and performance then describe the same rows."""
         with self.engine.connect() as c:
             c.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
-            return list(
+            window = list(
                 c.execute(
                     text(
-                        "SELECT inputs, output->'prediction' AS prediction, created_at "
+                        "SELECT id, inputs, output->'prediction' AS prediction, created_at "
                         "FROM predictions WHERE deployment_id = :d AND is_simulated = :s "
                         "ORDER BY created_at DESC, id DESC LIMIT :n"
                     ),
                     {"d": deployment_id, "s": scope == "simulated", "n": size},
                 ).all()
             )
+            labelled = list(
+                c.execute(
+                    text(
+                        "SELECT p.id AS prediction_id, p.output, f.true_value, f.created_at "
+                        "FROM feedback f JOIN predictions p ON p.id = f.prediction_id "
+                        "WHERE p.id = ANY(:ids) ORDER BY p.id"
+                    ),
+                    {"ids": [r.id for r in window]},
+                ).all()
+            )
+        return window, labelled
 
     def _summarise(
         self,
         dep: Any,
         reference: Any,
         window: list[Any],
-        scope: Scope,
+        labelled: list[Any],
         th: Thresholds,
         context: dict[str, Any],
     ) -> dict[str, Any]:
@@ -290,14 +306,25 @@ class MonitoringRepository:
             dep.task,
             th,
         )
-        performance = self.feedback.performance(dep.id, scope, th.min_labelled)
+        # performance over the labels of this window only (not all history), so it recovers when
+        # traffic does; the offline comparison and the 10 % threshold are unchanged
+        performance = window_performance(dep.task, labelled, th.min_labelled)
         stored = dep.evaluation or {}
+        metric = stored.get("selection_metric")
         comparison = performance_comparison(
             performance,
             (stored.get("evaluation") or {}).get("metrics"),
-            stored.get("selection_metric"),
+            metric,
             th,
         )
+        comparison["window_labelled"] = len(labelled)
+        if comparison["evaluated"] and metric:
+            comparison = performance_verdict(
+                comparison,
+                metric_sampler(dep.task, labelled, metric),
+                len(labelled),
+                bootstrap_seed([r.prediction_id for r in labelled]),
+            )
         return {
             **context,
             **core,

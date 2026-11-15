@@ -1,0 +1,76 @@
+/* Design tokens. One accent, restrained neutrals, status colours that are never the only signal. */
+:root {
+  --font:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --bg: #f6f7fb;
+  --surface: #ffffff;
+  --surface-2: #f0f2f8;
+  --border: #dfe3ee;
+  --border-strong: #c3c9da;
+  --text: #171b2e;
+  --text-muted: #525a74;
+  --accent: #2748c8;
+  --accent-hover: #1f3aa6;
+  --accent-soft: #e8edff;
+  --on-accent: #ffffff;
+  --focus: #1b3bd1;
+
+  --ok: #17663a;
+  --ok-bg: #e3f5ea;
+  --warn: #8a5300;
+  --warn-bg: #fff1d6;
+  --danger: #a3262e;
+  --danger-bg: #fde7e8;
+  --info: #1f4bb8;
+  --info-bg: #e6edff;
+  --neutral-bg: #eceef5;
+
+  --chart-1: #2748c8;
+  --chart-2: #d9731a;
+  --chart-3: #178a6b;
+  --chart-4: #8a45c9;
+  --chart-grid: #e1e5f0;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 2px rgb(20 28 60 / 6%), 0 4px 14px rgb(20 28 60 / 5%);
+  --sidebar-w: 248px;
+  --content-w: 1180px;
+  --space: 4px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1220;
+    --surface: #171b2e;
+    --surface-2: #1e2339;
+    --border: #2b3150;
+    --border-strong: #3d4569;
+    --text: #eceffb;
+    --text-muted: #a5adc8;
+    --accent: #8ea6ff;
+    --accent-hover: #adbdff;
+    --accent-soft: #232c55;
+    --on-accent: #0f1220;
+    --focus: #b3c1ff;
+    --ok: #6fdc9b;
+    --ok-bg: #12301f;
+    --warn: #ffc766;
+    --warn-bg: #36270a;
+    --danger: #ff9aa0;
+    --danger-bg: #3a1519;
+    --info: #9db6ff;
+    --info-bg: #1b2650;
+    --neutral-bg: #262c48;
+    --chart-1: #8ea6ff;
+    --chart-2: #ffa95c;
+    --chart-3: #55d0ac;
+    --chart-4: #c79bff;
+    --chart-grid: #2b3150;
+    --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 4px 14px rgb(0 0 0 / 25%);
+    color-scheme: dark;
+  }
+}

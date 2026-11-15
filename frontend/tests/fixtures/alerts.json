@@ -1,0 +1,121 @@
+{
+  "alerts": [
+    {
+      "id": 4,
+      "deployment_id": 1,
+      "rule": "performance_drop",
+      "scope": "simulated",
+      "severity": "critical",
+      "status": "open",
+      "details": {
+        "live": 3.9908307866,
+        "metric": "rmse",
+        "offline": 2.20743936745,
+        "verdict": "triggered",
+        "interval": {
+          "seed": 4218535161342193090,
+          "lower": 0.716021,
+          "method": "bootstrap",
+          "one_sided": "lower bound of the relative worsening",
+          "resamples": 200,
+          "confidence": 0.9,
+          "valid_resamples": 200
+        },
+        "labelled": 299,
+        "evaluated": true,
+        "threshold": 0.1,
+        "triggered": true,
+        "live_status": "ok",
+        "window_labelled": 299,
+        "relative_worsening": 0.807901
+      },
+      "first_report_id": 4,
+      "last_report_id": 4,
+      "occurrences": 1,
+      "created_at": "2026-11-14T04:02:26.034373+00:00",
+      "updated_at": "2026-11-14T04:02:26.034373+00:00",
+      "resolved_at": null,
+      "events": null
+    },
+    {
+      "id": 3,
+      "deployment_id": 1,
+      "rule": "prediction_shift",
+      "scope": "simulated",
+      "severity": "warning",
+      "status": "open",
+      "details": {
+        "method": "ks",
+        "p_value": 0.0,
+        "statistic": 0.314,
+        "threshold": 0.05
+      },
+      "first_report_id": 4,
+      "last_report_id": 4,
+      "occurrences": 1,
+      "created_at": "2026-11-14T04:02:26.034373+00:00",
+      "updated_at": "2026-11-14T04:02:26.034373+00:00",
+      "resolved_at": null,
+      "events": null
+    },
+    {
+      "id": 2,
+      "deployment_id": 1,
+      "rule": "performance_drop",
+      "scope": "simulated",
+      "severity": "critical",
+      "status": "resolved",
+      "details": {
+        "live": 5.57919932723,
+        "metric": "rmse",
+        "offline": 2.20743936745,
+        "verdict": "triggered",
+        "interval": {
+          "seed": 1298605317690183642,
+          "lower": 1.473519,
+          "method": "bootstrap",
+          "one_sided": "lower bound of the relative worsening",
+          "resamples": 200,
+          "confidence": 0.9,
+          "valid_resamples": 200
+        },
+        "labelled": 300,
+        "evaluated": true,
+        "threshold": 0.1,
+        "triggered": true,
+        "live_status": "ok",
+        "window_labelled": 300,
+        "relative_worsening": 1.527453
+      },
+      "first_report_id": 2,
+      "last_report_id": 3,
+      "occurrences": 1,
+      "created_at": "2026-11-14T04:02:23.925529+00:00",
+      "updated_at": "2026-11-14T04:02:25.362781+00:00",
+      "resolved_at": "2026-11-14T04:02:25.362781+00:00",
+      "events": null
+    },
+    {
+      "id": 1,
+      "deployment_id": 1,
+      "rule": "prediction_shift",
+      "scope": "simulated",
+      "severity": "warning",
+      "status": "resolved",
+      "details": {
+        "method": "ks",
+        "p_value": 0.0,
+        "statistic": 0.746,
+        "threshold": 0.05
+      },
+      "first_report_id": 2,
+      "last_report_id": 3,
+      "occurrences": 1,
+      "created_at": "2026-11-14T04:02:23.925529+00:00",
+      "updated_at": "2026-11-14T04:02:25.362781+00:00",
+      "resolved_at": "2026-11-14T04:02:25.362781+00:00",
+      "events": null
+    }
+  ],
+  "next_before_id": null
+}

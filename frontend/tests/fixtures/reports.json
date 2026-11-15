@@ -1,0 +1,98 @@
+{
+  "deployment_id": 1,
+  "reports": [
+    {
+      "id": 4,
+      "deployment_id": 1,
+      "reference_id": 1,
+      "scope": "simulated",
+      "status": "ok",
+      "window_rows": 1000,
+      "window_start": "2026-11-14T04:02:24.551196+00:00",
+      "window_end": "2026-11-14T04:02:25.876873+00:00",
+      "thresholds": {
+        "alpha": 0.05,
+        "window": 1000,
+        "min_rows": 30,
+        "js_distance": 0.1,
+        "min_labelled": 30,
+        "feature_share": 0.5,
+        "performance_drop": 0.1
+      },
+      "summary": null,
+      "error": null,
+      "started_at": "2026-11-14T04:02:25.942845+00:00",
+      "finished_at": "2026-11-14T04:02:26.034373+00:00"
+    },
+    {
+      "id": 3,
+      "deployment_id": 1,
+      "reference_id": 1,
+      "scope": "simulated",
+      "status": "ok",
+      "window_rows": 1000,
+      "window_start": "2026-11-14T04:02:23.964985+00:00",
+      "window_end": "2026-11-14T04:02:25.204096+00:00",
+      "thresholds": {
+        "alpha": 0.05,
+        "window": 1000,
+        "min_rows": 30,
+        "js_distance": 0.1,
+        "min_labelled": 30,
+        "feature_share": 0.5,
+        "performance_drop": 0.1
+      },
+      "summary": null,
+      "error": null,
+      "started_at": "2026-11-14T04:02:25.330910+00:00",
+      "finished_at": "2026-11-14T04:02:25.362781+00:00"
+    },
+    {
+      "id": 2,
+      "deployment_id": 1,
+      "reference_id": 1,
+      "scope": "simulated",
+      "status": "ok",
+      "window_rows": 1000,
+      "window_start": "2026-11-14T04:02:22.495402+00:00",
+      "window_end": "2026-11-14T04:02:23.677693+00:00",
+      "thresholds": {
+        "alpha": 0.05,
+        "window": 1000,
+        "min_rows": 30,
+        "js_distance": 0.1,
+        "min_labelled": 30,
+        "feature_share": 0.5,
+        "performance_drop": 0.1
+      },
+      "summary": null,
+      "error": null,
+      "started_at": "2026-11-14T04:02:23.832102+00:00",
+      "finished_at": "2026-11-14T04:02:23.925529+00:00"
+    },
+    {
+      "id": 1,
+      "deployment_id": 1,
+      "reference_id": 1,
+      "scope": "simulated",
+      "status": "ok",
+      "window_rows": 1000,
+      "window_start": "2026-11-14T04:02:20.909054+00:00",
+      "window_end": "2026-11-14T04:02:22.208718+00:00",
+      "thresholds": {
+        "alpha": 0.05,
+        "window": 1000,
+        "min_rows": 30,
+        "js_distance": 0.1,
+        "min_labelled": 30,
+        "feature_share": 0.5,
+        "performance_drop": 0.1
+      },
+      "summary": null,
+      "error": null,
+      "started_at": "2026-11-14T04:02:22.410396+00:00",
+      "finished_at": "2026-11-14T04:02:22.457625+00:00"
+    }
+  ],
+  "next_before_id": null
+}

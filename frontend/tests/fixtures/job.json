@@ -1,0 +1,948 @@
+{
+  "id": 1,
+  "kind": "final",
+  "status": "succeeded",
+  "phase": "done",
+  "dataset": "abalone-pool@v1",
+  "dataset_sha256": "47ed8f7a92c9c6b3451f0b073d824008c9340bc09d2077ff57fb5cc8246c50ae",
+  "track": true,
+  "tracking_state": "logged",
+  "cancel_requested": false,
+  "stale": false,
+  "progress": {
+    "event": "algorithm_finished",
+    "algorithm": "random_forest",
+    "algorithm_index": 2,
+    "algorithm_count": 2,
+    "fold": null,
+    "folds": 3
+  },
+  "error": null,
+  "created_at": "2026-11-14T04:02:16.504405+00:00",
+  "started_at": "2026-11-14T04:02:17.928611+00:00",
+  "finished_at": "2026-11-14T04:02:19.908148+00:00",
+  "config": {
+    "target": "Rings",
+    "task": "regression",
+    "excluded": [],
+    "algorithms": [
+      {
+        "key": "ridge",
+        "params": {}
+      },
+      {
+        "key": "random_forest",
+        "params": {
+          "n_estimators": 10
+        }
+      }
+    ],
+    "settings": {
+      "test_fraction": 0.2,
+      "seed": 42,
+      "folds": 3
+    },
+    "selection_metric": null
+  },
+  "confirm_final_test": true,
+  "package_id": "m-20261114T040218Z-7e27e89c",
+  "tracking_job_key": "m-20261114T040218Z-7e27e89c",
+  "tracking_error": null,
+  "result": {
+    "dataset_ref": "abalone-pool@v1",
+    "sha256": "47ed8f7a92c9c6b3451f0b073d824008c9340bc09d2077ff57fb5cc8246c50ae",
+    "training": {
+      "task": "regression",
+      "folds": {
+        "used": 3,
+        "requested": 3
+      },
+      "split": {
+        "rows": 2924,
+        "test_rows": 585,
+        "stratified": false,
+        "train_rows": 2339
+      },
+      "target": "Rings",
+      "classes": null,
+      "columns": {
+        "dropped": [],
+        "numeric": [
+          "Length",
+          "Diameter",
+          "Height",
+          "Whole_weight",
+          "Shucked_weight",
+          "Viscera_weight",
+          "Shell_weight"
+        ],
+        "categorical": ["Sex"]
+      },
+      "results": [
+        {
+          "oof": {
+            "rows": 2339,
+            "metrics": {
+              "r2": 0.525435899025,
+              "mae": 1.6150517303,
+              "rmse": 2.23983841727
+            },
+            "undefined": {},
+            "residual_points": [
+              {
+                "row": 0,
+                "actual": 15.0,
+                "residual": 5.99889009005,
+                "predicted": 9.00110990995
+              },
+              {
+                "row": 2,
+                "actual": 8.0,
+                "residual": 0.105357381988,
+                "predicted": 7.89464261801
+              },
+              {
+                "row": 5,
+                "actual": 19.0,
+                "residual": 6.03125566102,
+                "predicted": 12.968744339
+              },
+              {
+                "row": 7,
+                "actual": 10.0,
+                "residual": 0.571245170418,
+                "predicted": 9.42875482958
+              },
+              {
+                "row": 9,
+                "actual": 10.0,
+                "residual": -0.542375195384,
+                "predicted": 10.5423751954
+              },
+              {
+                "row": 13,
+                "actual": 11.0,
+                "residual": 2.74868523974,
+                "predicted": 8.25131476026
+              },
+              {
+                "row": 15,
+                "actual": 12.0,
+                "residual": 1.67097684919,
+                "predicted": 10.3290231508
+              },
+              {
+                "row": 17,
+                "actual": 10.0,
+                "residual": -0.635266691936,
+                "predicted": 10.6352666919
+              },
+              {
+                "row": 20,
+                "actual": 12.0,
+                "residual": 0.537757669623,
+                "predicted": 11.4622423304
+              },
+              {
+                "row": 22,
+                "actual": 19.0,
+                "residual": 7.74488829923,
+                "predicted": 11.2551117008
+              },
+              {
+                "row": 24,
+                "actual": 16.0,
+                "residual": 5.4074493077,
+                "predicted": 10.5925506923
+              },
+              {
+                "row": 27,
+                "actual": 9.0,
+                "residual": 0.792619635054,
+                "predicted": 8.20738036495
+              },
+              {
+                "row": 31,
+                "actual": 5.0,
+                "residual": -0.0679906898919,
+                "predicted": 5.06799068989
+              },
+              {
+                "row": 34,
+                "actual": 9.0,
+                "residual": -1.41420995253,
+                "predicted": 10.4142099525
+              },
+              {
+                "row": 37,
+                "actual": 10.0,
+                "residual": 0.721267496207,
+                "predicted": 9.27873250379
+              },
+              {
+                "row": 39,
+                "actual": 8.0,
+                "residual": -2.72877709186,
+                "predicted": 10.7287770919
+              },
+              {
+                "row": 41,
+                "actual": 8.0,
+                "residual": -1.55734994689,
+                "predicted": 9.55734994689
+              },
+              {
+                "row": 47,
+                "actual": 7.0,
+                "residual": -1.28043565851,
+                "predicted": 8.28043565851
+              },
+              {
+                "row": 49,
+                "actual": 8.0,
+                "residual": -0.825420932425,
+                "predicted": 8.82542093243
+              },
+              {
+                "row": 52,
+                "actual": 8.0,
+                "residual": -0.713567223828,
+                "predicted": 8.71356722383
+              },
+              {
+                "row": 55,
+                "actual": 13.0,
+                "residual": 2.11204443478,
+                "predicted": 10.8879555652
+              },
+              {
+                "row": 58,
+                "actual": 12.0,
+                "residual": -7.86570755659,
+                "predicted": 19.8657075566
+              },
+              {
+                "row": 60,
+                "actual": 12.0,
+                "residual": -4.95270521373,
+                "predicted": 16.9527052137
+              },
+              {
+                "row": 64,
+                "actual": 12.0,
+                "residual": -1.39359191844,
+                "predicted": 13.3935919184
+              },
+              {
+                "row": 66,
+                "actual": 13.0,
+                "residual": -0.597264519758,
+                "predicted": 13.5972645198
+              }
+            ],
+            "residual_points_note": "25 shown (fixture trimmed)"
+          },
+          "error": null,
+          "label": "Ridge regression",
+          "params": {
+            "alpha": 1.0
+          },
+          "status": "ok",
+          "seconds": 0.106,
+          "summary": {
+            "r2": {
+              "std": 0.0136566672483,
+              "mean": 0.525207914689,
+              "folds": 3,
+              "folds_defined": 3
+            },
+            "mae": {
+              "std": 0.0619654865418,
+              "mean": 1.61502453739,
+              "folds": 3,
+              "folds_defined": 3
+            },
+            "rmse": {
+              "std": 0.0653250392338,
+              "mean": 2.2391824568,
+              "folds": 3,
+              "folds_defined": 3
+            }
+          },
+          "algorithm": "ridge",
+          "fold_metrics": [
+            {
+              "r2": 0.529021729266,
+              "mae": 1.61844355451,
+              "rmse": 2.21345468719
+            },
+            {
+              "r2": 0.510049755606,
+              "mae": 1.67520973186,
+              "rmse": 2.31345417624
+            },
+            {
+              "r2": 0.536552259194,
+              "mae": 1.55142032579,
+              "rmse": 2.19063850698
+            }
+          ],
+          "fold_seconds": [0.039, 0.026, 0.017]
+        },
+        {
+          "oof": {
+            "rows": 2339,
+            "metrics": {
+              "r2": 0.49193843111,
+              "mae": 1.66139375802,
+              "rmse": 2.31754097099
+            },
+            "undefined": {},
+            "residual_points": [
+              {
+                "row": 0,
+                "actual": 15.0,
+                "residual": 6.0,
+                "predicted": 9.0
+              },
+              {
+                "row": 2,
+                "actual": 8.0,
+                "residual": -0.7,
+                "predicted": 8.7
+              },
+              {
+                "row": 5,
+                "actual": 19.0,
+                "residual": 5.1,
+                "predicted": 13.9
+              },
+              {
+                "row": 7,
+                "actual": 10.0,
+                "residual": 1.4,
+                "predicted": 8.6
+              },
+              {
+                "row": 9,
+                "actual": 10.0,
+                "residual": -1.8,
+                "predicted": 11.8
+              },
+              {
+                "row": 13,
+                "actual": 11.0,
+                "residual": 2.4,
+                "predicted": 8.6
+              },
+              {
+                "row": 15,
+                "actual": 12.0,
+                "residual": 1.5,
+                "predicted": 10.5
+              },
+              {
+                "row": 17,
+                "actual": 10.0,
+                "residual": 0.8,
+                "predicted": 9.2
+              },
+              {
+                "row": 20,
+                "actual": 12.0,
+                "residual": 1.5,
+                "predicted": 10.5
+              },
+              {
+                "row": 22,
+                "actual": 19.0,
+                "residual": 8.1,
+                "predicted": 10.9
+              },
+              {
+                "row": 24,
+                "actual": 16.0,
+                "residual": 6.0,
+                "predicted": 10.0
+              },
+              {
+                "row": 27,
+                "actual": 9.0,
+                "residual": 0.2,
+                "predicted": 8.8
+              },
+              {
+                "row": 31,
+                "actual": 5.0,
+                "residual": -0.3,
+                "predicted": 5.3
+              },
+              {
+                "row": 34,
+                "actual": 9.0,
+                "residual": -3.9,
+                "predicted": 12.9
+              },
+              {
+                "row": 37,
+                "actual": 10.0,
+                "residual": 2.1,
+                "predicted": 7.9
+              },
+              {
+                "row": 39,
+                "actual": 8.0,
+                "residual": -5.0,
+                "predicted": 13.0
+              },
+              {
+                "row": 41,
+                "actual": 8.0,
+                "residual": -0.6,
+                "predicted": 8.6
+              },
+              {
+                "row": 47,
+                "actual": 7.0,
+                "residual": -1.3,
+                "predicted": 8.3
+              },
+              {
+                "row": 49,
+                "actual": 8.0,
+                "residual": -0.1,
+                "predicted": 8.1
+              },
+              {
+                "row": 52,
+                "actual": 8.0,
+                "residual": -1.1,
+                "predicted": 9.1
+              },
+              {
+                "row": 55,
+                "actual": 13.0,
+                "residual": 0.5,
+                "predicted": 12.5
+              },
+              {
+                "row": 58,
+                "actual": 12.0,
+                "residual": -6.2,
+                "predicted": 18.2
+              },
+              {
+                "row": 60,
+                "actual": 12.0,
+                "residual": -4.0,
+                "predicted": 16.0
+              },
+              {
+                "row": 64,
+                "actual": 12.0,
+                "residual": -2.2,
+                "predicted": 14.2
+              },
+              {
+                "row": 66,
+                "actual": 13.0,
+                "residual": -0.9,
+                "predicted": 13.9
+              }
+            ],
+            "residual_points_note": "25 shown (fixture trimmed)"
+          },
+          "error": null,
+          "label": "Random forest",
+          "params": {
+            "max_depth": null,
+            "max_features": "all",
+            "n_estimators": 10,
+            "min_samples_leaf": 1
+          },
+          "status": "ok",
+          "seconds": 0.184,
+          "summary": {
+            "r2": {
+              "std": 0.0158416105333,
+              "mean": 0.491627293768,
+              "folds": 3,
+              "folds_defined": 3
+            },
+            "mae": {
+              "std": 0.0764900630629,
+              "mean": 1.66135775649,
+              "folds": 3,
+              "folds_defined": 3
+            },
+            "rmse": {
+              "std": 0.0649108703502,
+              "mean": 2.31690774954,
+              "folds": 3,
+              "folds_defined": 3
+            }
+          },
+          "algorithm": "random_forest",
+          "fold_metrics": [
+            {
+              "r2": 0.485007394627,
+              "mae": 1.68038461538,
+              "rmse": 2.31457201006
+            },
+            {
+              "r2": 0.480169395635,
+              "mae": 1.72653846154,
+              "rmse": 2.38295496369
+            },
+            {
+              "r2": 0.509705091043,
+              "mae": 1.57715019255,
+              "rmse": 2.25319627488
+            }
+          ],
+          "fold_seconds": [0.054, 0.052, 0.053]
+        }
+      ],
+      "seconds": 0.37,
+      "settings": {
+        "seed": 42,
+        "folds": 3,
+        "test_fraction": 0.2
+      },
+      "warnings": [],
+      "train_format": 1,
+      "train_class_counts": null
+    },
+    "selection": {
+      "task": "regression",
+      "margin": {
+        "runner_up": "random_forest",
+        "difference": 0.07772529273999984,
+        "within_fold_std": false
+      },
+      "metric": "rmse",
+      "classes": null,
+      "ranking": [
+        {
+          "rank": 1,
+          "label": "Ridge regression",
+          "params": {
+            "alpha": 1.0
+          },
+          "algorithm": "ridge",
+          "secondary": {
+            "mean": 1.61502453739,
+            "metric": "mae"
+          },
+          "tied_with": [],
+          "decided_by": "fold_mean",
+          "metric_std": 0.0653250392338,
+          "pooled_oof": 2.23983841727,
+          "metric_mean": 2.2391824568
+        },
+        {
+          "rank": 2,
+          "label": "Random forest",
+          "params": {
+            "max_depth": null,
+            "max_features": "all",
+            "n_estimators": 10,
+            "min_samples_leaf": 1
+          },
+          "algorithm": "random_forest",
+          "secondary": {
+            "mean": 1.66135775649,
+            "metric": "mae"
+          },
+          "tied_with": [],
+          "decided_by": "fold_mean",
+          "metric_std": 0.0649108703502,
+          "pooled_oof": 2.31754097099,
+          "metric_mean": 2.31690774954
+        }
+      ],
+      "excluded": [],
+      "selected": {
+        "label": "Ridge regression",
+        "algorithm": "ridge"
+      },
+      "warnings": [],
+      "direction": "lower",
+      "folds_used": 3,
+      "explanation": "Selected Ridge regression: best mean rmse over 3 cross-validation folds (2.2392, lower is better), ahead of Random forest (2.3169). Only cross-validation results and out-of-fold predictions were used.",
+      "tie_tolerance": 1e-9,
+      "positive_class": null,
+      "rankings_agree": true,
+      "secondary_metric": "mae",
+      "selection_format": 1
+    },
+    "selection_sha256": "f4d49ae61cab0466e1b6260736e15a536d58e330d7f7bbe0fa7eceb67f10dc0f",
+    "selection_note": null,
+    "test_result": {
+      "dataset": {
+        "ref": "abalone-pool@v1",
+        "sha256": "47ed8f7a92c9c6b3451f0b073d824008c9340bc09d2077ff57fb5cc8246c50ae"
+      },
+      "algorithm": "ridge",
+      "evaluation": {
+        "rows": 585,
+        "metrics": {
+          "r2": 0.504085146651,
+          "mae": 1.60930375178,
+          "rmse": 2.20743936745
+        },
+        "undefined": {},
+        "residual_points": [
+          {
+            "row": 12,
+            "actual": 9.0,
+            "residual": 0.227411826344,
+            "predicted": 8.77258817366
+          },
+          {
+            "row": 29,
+            "actual": 14.0,
+            "residual": 3.24788710379,
+            "predicted": 10.7521128962
+          },
+          {
+            "row": 30,
+            "actual": 5.0,
+            "residual": -0.370600380184,
+            "predicted": 5.37060038018
+          },
+          {
+            "row": 32,
+            "actual": 4.0,
+            "residual": -1.20327647989,
+            "predicted": 5.20327647989
+          },
+          {
+            "row": 43,
+            "actual": 7.0,
+            "residual": -3.0305600939,
+            "predicted": 10.0305600939
+          },
+          {
+            "row": 44,
+            "actual": 7.0,
+            "residual": -2.0139170167,
+            "predicted": 9.0139170167
+          },
+          {
+            "row": 45,
+            "actual": 9.0,
+            "residual": -0.0212960754646,
+            "predicted": 9.02129607546
+          },
+          {
+            "row": 51,
+            "actual": 6.0,
+            "residual": -0.387868772361,
+            "predicted": 6.38786877236
+          },
+          {
+            "row": 56,
+            "actual": 9.0,
+            "residual": -3.66512762214,
+            "predicted": 12.6651276221
+          },
+          {
+            "row": 63,
+            "actual": 9.0,
+            "residual": -0.562659388034,
+            "predicted": 9.56265938803
+          },
+          {
+            "row": 67,
+            "actual": 10.0,
+            "residual": -2.43046940349,
+            "predicted": 12.4304694035
+          },
+          {
+            "row": 70,
+            "actual": 9.0,
+            "residual": -3.06453844224,
+            "predicted": 12.0645384422
+          },
+          {
+            "row": 73,
+            "actual": 10.0,
+            "residual": 0.736200292821,
+            "predicted": 9.26379970718
+          },
+          {
+            "row": 80,
+            "actual": 9.0,
+            "residual": -0.923634511474,
+            "predicted": 9.92363451147
+          },
+          {
+            "row": 87,
+            "actual": 9.0,
+            "residual": -3.08160463594,
+            "predicted": 12.0816046359
+          },
+          {
+            "row": 93,
+            "actual": 19.0,
+            "residual": 2.75210945342,
+            "predicted": 16.2478905466
+          },
+          {
+            "row": 96,
+            "actual": 9.0,
+            "residual": 1.20818538125,
+            "predicted": 7.79181461875
+          },
+          {
+            "row": 102,
+            "actual": 11.0,
+            "residual": -0.03330614053,
+            "predicted": 11.0333061405
+          },
+          {
+            "row": 104,
+            "actual": 10.0,
+            "residual": 0.249247898306,
+            "predicted": 9.75075210169
+          },
+          {
+            "row": 108,
+            "actual": 15.0,
+            "residual": 3.46416430496,
+            "predicted": 11.535835695
+          },
+          {
+            "row": 111,
+            "actual": 12.0,
+            "residual": -0.397234641726,
+            "predicted": 12.3972346417
+          },
+          {
+            "row": 120,
+            "actual": 16.0,
+            "residual": -4.99699761986,
+            "predicted": 20.9969976199
+          },
+          {
+            "row": 124,
+            "actual": 12.0,
+            "residual": -5.13704833029,
+            "predicted": 17.1370483303
+          },
+          {
+            "row": 134,
+            "actual": 11.0,
+            "residual": 0.547913752847,
+            "predicted": 10.4520862472
+          },
+          {
+            "row": 135,
+            "actual": 9.0,
+            "residual": -2.54373703301,
+            "predicted": 11.543737033
+          }
+        ],
+        "residual_points_note": "25 shown (fixture trimmed)"
+      },
+      "limitation": "This result comes from the held-out test part, read once for this package. The same test part can be reused by other jobs on the same dataset version (an open decision), and repeated use across jobs can influence model choices. It is not independent or leakage-proof.",
+      "package_id": "m-20261114T040218Z-7e27e89c",
+      "test_split": {
+        "rows": 585,
+        "sha256": "e325d59d1292f56e271417b1b021f42e125222efe52d2b392045927c56bed7cc"
+      },
+      "result_format": 1,
+      "positive_class": null,
+      "selection_metric": "rmse",
+      "selection_sha256": "f4d49ae61cab0466e1b6260736e15a536d58e330d7f7bbe0fa7eceb67f10dc0f"
+    },
+    "package_id": "m-20261114T040218Z-7e27e89c"
+  },
+  "events": [
+    {
+      "seq": 1,
+      "kind": "phase",
+      "payload": {
+        "phase": "training"
+      },
+      "created_at": "2026-11-14T04:02:17.976713+00:00"
+    },
+    {
+      "seq": 2,
+      "kind": "algorithm_started",
+      "payload": {
+        "fold": null,
+        "kind": "algorithm_started",
+        "folds": 3,
+        "message": null,
+        "seconds": null,
+        "algorithm": "ridge",
+        "algorithm_count": 2,
+        "algorithm_index": 1
+      },
+      "created_at": "2026-11-14T04:02:18.050721+00:00"
+    },
+    {
+      "seq": 3,
+      "kind": "fold_finished",
+      "payload": {
+        "fold": 1,
+        "kind": "fold_finished",
+        "folds": 3,
+        "message": null,
+        "seconds": 0.039,
+        "algorithm": "ridge",
+        "algorithm_count": 2,
+        "algorithm_index": 1
+      },
+      "created_at": "2026-11-14T04:02:18.096837+00:00"
+    },
+    {
+      "seq": 4,
+      "kind": "fold_finished",
+      "payload": {
+        "fold": 2,
+        "kind": "fold_finished",
+        "folds": 3,
+        "message": null,
+        "seconds": 0.026,
+        "algorithm": "ridge",
+        "algorithm_count": 2,
+        "algorithm_index": 1
+      },
+      "created_at": "2026-11-14T04:02:18.128400+00:00"
+    },
+    {
+      "seq": 5,
+      "kind": "fold_finished",
+      "payload": {
+        "fold": 3,
+        "kind": "fold_finished",
+        "folds": 3,
+        "message": null,
+        "seconds": 0.017,
+        "algorithm": "ridge",
+        "algorithm_count": 2,
+        "algorithm_index": 1
+      },
+      "created_at": "2026-11-14T04:02:18.152744+00:00"
+    },
+    {
+      "seq": 6,
+      "kind": "algorithm_finished",
+      "payload": {
+        "fold": null,
+        "kind": "algorithm_finished",
+        "folds": 3,
+        "message": null,
+        "seconds": 0.106,
+        "algorithm": "ridge",
+        "algorithm_count": 2,
+        "algorithm_index": 1
+      },
+      "created_at": "2026-11-14T04:02:18.161358+00:00"
+    },
+    {
+      "seq": 7,
+      "kind": "algorithm_started",
+      "payload": {
+        "fold": null,
+        "kind": "algorithm_started",
+        "folds": 3,
+        "message": null,
+        "seconds": null,
+        "algorithm": "random_forest",
+        "algorithm_count": 2,
+        "algorithm_index": 2
+      },
+      "created_at": "2026-11-14T04:02:18.164343+00:00"
+    },
+    {
+      "seq": 8,
+      "kind": "fold_finished",
+      "payload": {
+        "fold": 1,
+        "kind": "fold_finished",
+        "folds": 3,
+        "message": null,
+        "seconds": 0.054,
+        "algorithm": "random_forest",
+        "algorithm_count": 2,
+        "algorithm_index": 2
+      },
+      "created_at": "2026-11-14T04:02:18.222669+00:00"
+    },
+    {
+      "seq": 9,
+      "kind": "fold_finished",
+      "payload": {
+        "fold": 2,
+        "kind": "fold_finished",
+        "folds": 3,
+        "message": null,
+        "seconds": 0.052,
+        "algorithm": "random_forest",
+        "algorithm_count": 2,
+        "algorithm_index": 2
+      },
+      "created_at": "2026-11-14T04:02:18.281429+00:00"
+    },
+    {
+      "seq": 10,
+      "kind": "fold_finished",
+      "payload": {
+        "fold": 3,
+        "kind": "fold_finished",
+        "folds": 3,
+        "message": null,
+        "seconds": 0.053,
+        "algorithm": "random_forest",
+        "algorithm_count": 2,
+        "algorithm_index": 2
+      },
+      "created_at": "2026-11-14T04:02:18.345187+00:00"
+    },
+    {
+      "seq": 11,
+      "kind": "algorithm_finished",
+      "payload": {
+        "fold": null,
+        "kind": "algorithm_finished",
+        "folds": 3,
+        "message": null,
+        "seconds": 0.184,
+        "algorithm": "random_forest",
+        "algorithm_count": 2,
+        "algorithm_index": 2
+      },
+      "created_at": "2026-11-14T04:02:18.350804+00:00"
+    },
+    {
+      "seq": 12,
+      "kind": "phase",
+      "payload": {
+        "phase": "finalizing"
+      },
+      "created_at": "2026-11-14T04:02:18.354586+00:00"
+    },
+    {
+      "seq": 13,
+      "kind": "phase",
+      "payload": {
+        "phase": "tracking"
+      },
+      "created_at": "2026-11-14T04:02:18.421388+00:00"
+    },
+    {
+      "seq": 14,
+      "kind": "state",
+      "payload": {
+        "status": "succeeded",
+        "error_code": null
+      },
+      "created_at": "2026-11-14T04:02:19.908148+00:00"
+    }
+  ],
+  "last_seq": 14
+}

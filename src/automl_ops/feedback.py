@@ -24,9 +24,9 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import numpy as np
@@ -36,8 +36,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from automl_ops.deployments import DeploymentNotFound
 from automl_ops.evaluate import (
     EvaluationError,
+    classification_scalars,
     evaluate_classification,
     evaluate_regression,
+    regression_scalars,
 )
 from automl_ops.profile import NUMBER_RE
 
@@ -212,6 +214,138 @@ class FeedbackRepository:
             ).all()
         return [_label(r) for r in rows]
 
+    def predictions(
+        self,
+        deployment_id: int,
+        scope: Scope = "real",
+        since: datetime | None = None,
+        until: datetime | None = None,
+        before: str | None = None,
+        limit: int = PAGE,
+    ) -> list[Any]:
+        """Logged predictions, newest first: when, which version, what was answered, how fast and
+        whether a true value is recorded. The input values are deliberately not returned. `before`
+        is the cursor `<created_at microseconds>.<id>` of the last row of the previous page."""
+        flags = {"real": [False], "simulated": [True], "all": [False, True]}[scope]
+        cursor_time, cursor_id = _parse_cursor(before)
+        with self.engine.connect() as c:
+            self._deployment(c, deployment_id)
+            return list(
+                c.execute(
+                    text(
+                        "SELECT p.id, p.created_at, p.model_version, p.is_simulated, p.latency_ms, "
+                        "p.output->'prediction' AS prediction, "
+                        "CASE WHEN jsonb_typeof(p.output->'probabilities') = 'object' THEN "
+                        "(SELECT max(v::float) FROM jsonb_each_text(p.output->'probabilities') "
+                        "AS t(k, v)) END AS confidence, f.true_value, f.id AS label_id "
+                        "FROM predictions p LEFT JOIN feedback f ON f.prediction_id = p.id "
+                        "WHERE p.deployment_id = :d AND p.is_simulated = ANY(:s) "
+                        "AND (CAST(:since AS timestamptz) IS NULL OR p.created_at >= :since) "
+                        "AND (CAST(:until AS timestamptz) IS NULL OR p.created_at < :until) "
+                        "AND (CAST(:ct AS timestamptz) IS NULL "
+                        "OR (p.created_at, p.id) < (CAST(:ct AS timestamptz), :ci)) "
+                        "ORDER BY p.created_at DESC, p.id DESC LIMIT :n"
+                    ),
+                    {
+                        "d": deployment_id,
+                        "s": flags,
+                        "since": since,
+                        "until": until,
+                        "ct": cursor_time,
+                        "ci": cursor_id,
+                        "n": min(max(limit, 1), PAGE),
+                    },
+                ).all()
+            )
+
+    def activity(
+        self,
+        deployment_id: int,
+        scope: Scope = "all",
+        since: datetime | None = None,
+        until: datetime | None = None,
+        bucket: str | None = None,
+    ) -> dict[str, Any]:
+        """Prediction counts per time bucket (empty buckets included), split into real and
+        simulated traffic, with how many are labelled, and overall latency. Bounded: at most
+        `MAX_BUCKETS` buckets, else `ActivityRangeError`."""
+        flags = {"real": [False], "simulated": [True], "all": [False, True]}[scope]
+        with self.engine.connect() as c:
+            c.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
+            d = self._deployment(c, deployment_id)
+            bounds = c.execute(
+                text(
+                    "SELECT min(created_at) AS first, max(created_at) AS last, count(*) AS n "
+                    "FROM predictions WHERE deployment_id = :d AND is_simulated = ANY(:s)"
+                ),
+                {"d": deployment_id, "s": flags},
+            ).one()
+            end = until or datetime.now(UTC)
+            start = since or bounds.first or (end - timedelta(hours=1))
+            if start >= end:
+                raise ActivityRangeError("`since` must be before `until`")
+            step = bucket or _auto_bucket(end - start)
+            span = BUCKETS[step]
+            first = _floor(start, step)
+            count = int((end - first) / span) + 1
+            if count > MAX_BUCKETS:
+                raise ActivityRangeError(
+                    f"{count} {step} buckets is more than the {MAX_BUCKETS} allowed; "
+                    "choose a shorter range or a larger bucket"
+                )
+            rows = c.execute(
+                text(
+                    "SELECT date_trunc(:u, p.created_at AT TIME ZONE 'UTC') AS b, "
+                    "p.is_simulated AS sim, "
+                    "count(*) AS predictions, count(f.id) AS labelled "
+                    "FROM predictions p LEFT JOIN feedback f ON f.prediction_id = p.id "
+                    "WHERE p.deployment_id = :d AND p.is_simulated = ANY(:s) "
+                    "AND p.created_at >= :since AND p.created_at < :until GROUP BY 1, 2"
+                ),
+                {"u": step, "d": deployment_id, "s": flags, "since": first, "until": end},
+            ).all()
+            latency = c.execute(
+                text(
+                    "SELECT count(*) AS n, avg(latency_ms) AS mean, "
+                    "percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95 "
+                    "FROM predictions WHERE deployment_id = :d AND is_simulated = ANY(:s) "
+                    "AND created_at >= :since AND created_at < :until"
+                ),
+                {"d": deployment_id, "s": flags, "since": first, "until": end},
+            ).one()
+        found = {
+            (r.b.replace(tzinfo=UTC), bool(r.sim)): (int(r.predictions), int(r.labelled))
+            for r in rows
+        }
+        buckets = []
+        for i in range(count):
+            at = first + i * span
+            real, sim = found.get((at, False), (0, 0)), found.get((at, True), (0, 0))
+            buckets.append(
+                {
+                    "start": at.isoformat(),
+                    "real": {"predictions": real[0], "labelled": real[1]},
+                    "simulated": {"predictions": sim[0], "labelled": sim[1]},
+                }
+            )
+        return {
+            "deployment_id": d.id,
+            "scope": scope,
+            "since": first.isoformat(),
+            "until": end.isoformat(),
+            "bucket": step,
+            "buckets": buckets,
+            "totals": {
+                "real": _total(buckets, "real"),
+                "simulated": _total(buckets, "simulated"),
+            },
+            "latency_ms": {
+                "mean": None if latency.mean is None else round(float(latency.mean), 3),
+                "p95": None if latency.p95 is None else round(float(latency.p95), 3),
+                "predictions": int(latency.n),
+            },
+        }
+
     @staticmethod
     def _deployment(c: Any, deployment_id: int) -> Any:
         row = c.execute(
@@ -350,3 +484,121 @@ def _score(task: str, labelled: Sequence[Any]) -> dict[str, Any]:
         y_pred = np.array([float(r.output["prediction"]) for r in labelled])
         scored = evaluate_regression(y_true, y_pred, np.arange(len(labelled)), residuals=False)
     return {"source": "live_feedback", "window": window, **scored}
+
+
+# --------------------------------------------------------------------------------------------
+# Windowed scoring (monitoring): the same scoring code over rows the caller already selected
+# --------------------------------------------------------------------------------------------
+
+
+def window_performance(
+    task: str, labelled: Sequence[Any], min_labelled: int = DEFAULT_MIN_LABELLED
+) -> dict[str, Any]:
+    """Live metrics for exactly the labelled rows given (rows with `output`, `true_value` and
+    `created_at`). Same fields and same scoring as `FeedbackRepository.performance`, but it never
+    reads the database: the monitoring run chooses the rows, so the report and the drift verdict
+    describe the same window. Below `min_labelled` no metrics are produced."""
+    result: dict[str, Any] = {"labelled": len(labelled), "min_labelled": min_labelled, "live": None}
+    if not labelled:
+        result["status"] = "no_labels"
+    elif len(labelled) < min_labelled:
+        result["status"] = "insufficient_labels"
+    else:
+        try:
+            result["live"] = _score(task, labelled)
+            result["status"] = "ok"
+        except EvaluationError:
+            result["status"] = "not_computable"
+    return result
+
+
+def metric_sampler(
+    task: str, labelled: Sequence[Any], metric: str
+) -> Callable[[np.ndarray[Any, Any]], float | None]:
+    """A function from row indices (a bootstrap resample) to the value of `metric` on those rows,
+    or None where it is undefined for that resample. Uses the same scalar code as live scoring,
+    so direction and definition cannot drift apart."""
+    if task == "classification":
+        classes = sorted(labelled[0].output["probabilities"])
+        y_true = np.array([r.true_value for r in labelled])
+        y_pred = np.array([str(r.output["prediction"]) for r in labelled])
+        proba = np.array([[r.output["probabilities"][c] for c in classes] for r in labelled])
+
+        def classification(index: np.ndarray[Any, Any]) -> float | None:
+            try:
+                scalars, _ = classification_scalars(
+                    y_true[index], y_pred[index], proba[index], classes
+                )
+            except (EvaluationError, ValueError):
+                return None
+            return scalars.get(metric)
+
+        return classification
+    t = np.array([float(r.true_value) for r in labelled])
+    p = np.array([float(r.output["prediction"]) for r in labelled])
+
+    def regression(index: np.ndarray[Any, Any]) -> float | None:
+        try:
+            scalars, _ = regression_scalars(t[index], p[index])
+        except (EvaluationError, ValueError):
+            return None
+        return scalars.get(metric)
+
+    return regression
+
+
+# --------------------------------------------------------------------------------------------
+# Read-only history and activity (Phase 5)
+# --------------------------------------------------------------------------------------------
+
+MAX_BUCKETS = 500
+EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+BUCKETS = {
+    "minute": timedelta(minutes=1),
+    "hour": timedelta(hours=1),
+    "day": timedelta(days=1),
+}
+CURSOR_RE = re.compile(r"^\d{1,20}\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+class ActivityRangeError(ValueError):
+    """The requested time range and bucket would give too many (or no) buckets."""
+
+
+def _auto_bucket(span: timedelta) -> str:
+    """The smallest bucket that keeps the chart to at most 200 points."""
+    for name in ("minute", "hour", "day"):
+        if span / BUCKETS[name] <= 200:
+            return name
+    return "day"
+
+
+def _floor(moment: datetime, step: str) -> datetime:
+    moment = moment.astimezone(UTC)
+    if step == "minute":
+        return moment.replace(second=0, microsecond=0)
+    if step == "hour":
+        return moment.replace(minute=0, second=0, microsecond=0)
+    return moment.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _total(buckets: list[dict[str, Any]], key: str) -> dict[str, int]:
+    return {
+        "predictions": sum(b[key]["predictions"] for b in buckets),
+        "labelled": sum(b[key]["labelled"] for b in buckets),
+    }
+
+
+def make_cursor(created_at: datetime, prediction_id: str) -> str:
+    moment = created_at.astimezone(UTC)
+    micros = (moment - EPOCH) // timedelta(microseconds=1)
+    return f"{micros}.{prediction_id}"
+
+
+def _parse_cursor(cursor: str | None) -> tuple[datetime | None, str | None]:
+    if cursor is None:
+        return None, None
+    if not CURSOR_RE.match(cursor):
+        raise ActivityRangeError("`before` is not a cursor from this endpoint")
+    micros, _, uid = cursor.partition(".")
+    return EPOCH + timedelta(microseconds=int(micros)), uid

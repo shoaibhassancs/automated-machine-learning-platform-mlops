@@ -9,6 +9,7 @@ every deployment change makes.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Path, Query
@@ -17,12 +18,15 @@ from starlette.concurrency import run_in_threadpool
 from automl_ops.api_control.datasets import Ctx, _heavy
 from automl_ops.api_control.errors import ApiError, ErrorEnvelope
 from automl_ops.api_control.schemas import (
+    ActivityReport,
     DeploymentDetail,
     DeploymentList,
     DeploymentModel,
     DeploymentRequest,
     LabelList,
     LivePerformance,
+    PredictionList,
+    PredictionModel,
     ReasonRequest,
     ServingReportModel,
 )
@@ -40,7 +44,13 @@ from automl_ops.deployments import (
     NotActive,
     NotDeployable,
 )
-from automl_ops.feedback import DEFAULT_MIN_LABELLED, FeedbackRepository, Scope
+from automl_ops.feedback import (
+    DEFAULT_MIN_LABELLED,
+    ActivityRangeError,
+    FeedbackRepository,
+    Scope,
+    make_cursor,
+)
 from automl_ops.registry import ModelNotFound, PackageUnverified, RegistryError, VersionNotFound
 from automl_ops.serving_client import ServingReport
 
@@ -311,3 +321,83 @@ async def deployment_feedback(
         labels=[label_model(r) for r in rows],
         next_before_id=rows[-1].id if len(rows) == limit else None,
     )
+
+
+@router.get(
+    "/deployments/{deployment_id}/predictions",
+    response_model=PredictionList,
+    summary="Prediction history of a deployment, newest first",
+    description=(
+        "Read-only. One row per logged prediction: when, which version, the answer, the "
+        "confidence (classification), latency and the recorded true value if any. The input "
+        "values are not returned. `scope` separates real from simulated traffic (default "
+        "`real`); `since` (inclusive) and `until` (exclusive) filter by time. Paged by the string "
+        "cursor `before` / `next_before` because predictions have no numeric id."
+    ),
+)
+async def deployment_predictions(
+    deployment_id: DeploymentId,
+    ctx: Ctx,
+    scope: Annotated[Scope, Query()] = "real",
+    since: Annotated[datetime | None, Query()] = None,
+    until: Annotated[datetime | None, Query()] = None,
+    before: Annotated[str | None, Query(max_length=80)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> PredictionList:
+    repo = _feedback(ctx)
+    try:
+        rows = await run_in_threadpool(
+            repo.predictions, deployment_id, scope, since, until, before, limit
+        )
+    except DeploymentError as error:
+        raise _api_error(error) from None
+    except ActivityRangeError as error:
+        raise ApiError(422, "invalid_input", str(error)) from None
+    return PredictionList(
+        deployment_id=deployment_id,
+        scope=scope,
+        predictions=[
+            PredictionModel(
+                id=r.id,
+                created_at=r.created_at.isoformat(),
+                model_version=r.model_version,
+                is_simulated=bool(r.is_simulated),
+                prediction=r.prediction,
+                confidence=None if r.confidence is None else round(float(r.confidence), 6),
+                latency_ms=float(r.latency_ms),
+                true_value=r.true_value,
+            )
+            for r in rows
+        ],
+        next_before=make_cursor(rows[-1].created_at, rows[-1].id) if len(rows) == limit else None,
+    )
+
+
+@router.get(
+    "/deployments/{deployment_id}/activity",
+    response_model=ActivityReport,
+    summary="Prediction activity over time",
+    description=(
+        "Read-only counts of predictions per time bucket (empty buckets included), with how many "
+        "are labelled, real and simulated traffic kept apart, plus mean and 95th-percentile "
+        "latency. `since` and `until` set the range (default: the first prediction to now); "
+        "`bucket` is chosen automatically (at most 200 points) unless given. At most 500 buckets: "
+        "a larger request is refused with 422."
+    ),
+)
+async def deployment_activity(
+    deployment_id: DeploymentId,
+    ctx: Ctx,
+    scope: Annotated[Scope, Query()] = "all",
+    since: Annotated[datetime | None, Query()] = None,
+    until: Annotated[datetime | None, Query()] = None,
+    bucket: Annotated[Literal["minute", "hour", "day"] | None, Query()] = None,
+) -> ActivityReport:
+    repo = _feedback(ctx)
+    try:
+        result = await run_in_threadpool(repo.activity, deployment_id, scope, since, until, bucket)
+    except DeploymentError as error:
+        raise _api_error(error) from None
+    except ActivityRangeError as error:
+        raise ApiError(422, "invalid_input", str(error)) from None
+    return ActivityReport(**result)

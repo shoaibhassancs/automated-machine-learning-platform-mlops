@@ -25,9 +25,12 @@ __pycache__/
 /build/
 *.egg-info/
 
-# Frontend build output (frontend/ is created in a later phase)
+# Frontend (Phase 5): dependencies, build output and browser-test output
 /frontend/node_modules/
 /frontend/dist/
+/frontend/playwright-report/
+/frontend/test-results/
+/frontend/blob-report/
 
 # OS and editor files
 .DS_Store

@@ -1,0 +1,243 @@
+{
+  "id": 4,
+  "deployment_id": 1,
+  "reference_id": 1,
+  "scope": "simulated",
+  "status": "ok",
+  "window_rows": 1000,
+  "window_start": "2026-11-14T04:02:24.551196+00:00",
+  "window_end": "2026-11-14T04:02:25.876873+00:00",
+  "thresholds": {
+    "alpha": 0.05,
+    "window": 1000,
+    "min_rows": 30,
+    "js_distance": 0.1,
+    "min_labelled": 30,
+    "feature_share": 0.5,
+    "performance_drop": 0.1
+  },
+  "summary": {
+    "rules": [
+      {
+        "rule": "drifted_feature_share",
+        "details": {
+          "share": 0.25,
+          "threshold": 0.5,
+          "drifted_features": ["Whole_weight", "Shell_weight"]
+        },
+        "severity": "warning",
+        "evaluated": true,
+        "triggered": false
+      },
+      {
+        "rule": "prediction_shift",
+        "details": {
+          "method": "ks",
+          "p_value": 0.0,
+          "statistic": 0.314,
+          "threshold": 0.05
+        },
+        "severity": "warning",
+        "evaluated": true,
+        "triggered": true
+      },
+      {
+        "rule": "performance_drop",
+        "details": {
+          "live": 3.9908307866,
+          "metric": "rmse",
+          "offline": 2.20743936745,
+          "verdict": "triggered",
+          "interval": {
+            "seed": 4218535161342193090,
+            "lower": 0.716021,
+            "method": "bootstrap",
+            "one_sided": "lower bound of the relative worsening",
+            "resamples": 200,
+            "confidence": 0.9,
+            "valid_resamples": 200
+          },
+          "labelled": 299,
+          "evaluated": true,
+          "threshold": 0.1,
+          "triggered": true,
+          "live_status": "ok",
+          "window_labelled": 299,
+          "relative_worsening": 0.807901
+        },
+        "severity": "critical",
+        "evaluated": true,
+        "triggered": true
+      }
+    ],
+    "window": {
+      "rows": 1000,
+      "labelled": 299,
+      "max_rows": 1000
+    },
+    "traffic": {
+      "note": "simulated traffic: not real observations",
+      "scope": "simulated",
+      "simulated": true
+    },
+    "features": [
+      {
+        "kind": "numeric",
+        "name": "Length",
+        "method": "ks",
+        "status": "ok",
+        "drifted": false,
+        "p_value": 0.716134,
+        "statistic": 0.031,
+        "threshold": 0.05,
+        "current_missing_share": 0.0,
+        "reference_missing_share": 0.0
+      },
+      {
+        "kind": "numeric",
+        "name": "Diameter",
+        "method": "ks",
+        "status": "ok",
+        "drifted": false,
+        "p_value": 0.67851,
+        "statistic": 0.032,
+        "threshold": 0.05,
+        "current_missing_share": 0.0,
+        "reference_missing_share": 0.0
+      },
+      {
+        "kind": "numeric",
+        "name": "Height",
+        "method": "ks",
+        "status": "ok",
+        "drifted": false,
+        "p_value": 0.307205,
+        "statistic": 0.043,
+        "threshold": 0.05,
+        "current_missing_share": 0.0,
+        "reference_missing_share": 0.0
+      },
+      {
+        "kind": "numeric",
+        "name": "Whole_weight",
+        "method": "ks",
+        "status": "ok",
+        "drifted": true,
+        "p_value": 0.0,
+        "statistic": 0.153,
+        "threshold": 0.05,
+        "current_missing_share": 0.0,
+        "reference_missing_share": 0.0
+      },
+      {
+        "kind": "numeric",
+        "name": "Shucked_weight",
+        "method": "ks",
+        "status": "ok",
+        "drifted": false,
+        "p_value": 0.602803,
+        "statistic": 0.034,
+        "threshold": 0.05,
+        "current_missing_share": 0.0,
+        "reference_missing_share": 0.0
+      },
+      {
+        "kind": "numeric",
+        "name": "Viscera_weight",
+        "method": "ks",
+        "status": "ok",
+        "drifted": false,
+        "p_value": 0.334416,
+        "statistic": 0.042,
+        "threshold": 0.05,
+        "current_missing_share": 0.0,
+        "reference_missing_share": 0.0
+      },
+      {
+        "kind": "numeric",
+        "name": "Shell_weight",
+        "method": "ks",
+        "status": "ok",
+        "drifted": true,
+        "p_value": 0.0,
+        "statistic": 0.149,
+        "threshold": 0.05,
+        "current_missing_share": 0.0,
+        "reference_missing_share": 0.0
+      },
+      {
+        "kind": "categorical",
+        "name": "Sex",
+        "method": "js",
+        "status": "ok",
+        "drifted": false,
+        "p_value": null,
+        "statistic": 0.074104,
+        "threshold": 0.1,
+        "current_missing_share": 0.0,
+        "reference_missing_share": 0.0
+      }
+    ],
+    "reference": {
+      "id": 1,
+      "model": "abalone",
+      "version": 1,
+      "package_id": "m-20261114T040218Z-7e27e89c",
+      "dataset_ref": "abalone-pool@v1",
+      "sample_rows": 1000,
+      "sample_sha256": "54fc2caa547b35c592c02055885f86645be64ecd92cb1aa884ec81c74a1b57b2"
+    },
+    "prediction": {
+      "method": "ks",
+      "status": "ok",
+      "current": {
+        "max": 22.183788,
+        "min": -2.373975,
+        "std": 3.361062,
+        "mean": 11.947429
+      },
+      "drifted": true,
+      "p_value": 0.0,
+      "reference": {
+        "max": 19.99215,
+        "min": 3.751376,
+        "std": 2.317932,
+        "mean": 10.01274
+      },
+      "statistic": 0.314,
+      "threshold": 0.05
+    },
+    "performance": {
+      "live": 3.9908307866,
+      "metric": "rmse",
+      "offline": 2.20743936745,
+      "verdict": "triggered",
+      "interval": {
+        "seed": 4218535161342193090,
+        "lower": 0.716021,
+        "method": "bootstrap",
+        "one_sided": "lower bound of the relative worsening",
+        "resamples": 200,
+        "confidence": 0.9,
+        "valid_resamples": 200
+      },
+      "labelled": 299,
+      "evaluated": true,
+      "threshold": 0.1,
+      "triggered": true,
+      "live_status": "ok",
+      "window_labelled": 299,
+      "relative_worsening": 0.807901
+    },
+    "dataset_drift": {
+      "share": 0.25,
+      "drifted": false,
+      "threshold": 0.5,
+      "drifted_features": 2,
+      "evaluated_features": 8
+    }
+  },
+  "error": null,
+  "started_at": "2026-11-14T04:02:25.942845+00:00",
+  "finished_at": "2026-11-14T04:02:26.034373+00:00"
+}

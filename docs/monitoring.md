@@ -40,8 +40,14 @@ built: Evidently's HTML report on disk (the full report is stored as JSON in Pos
 - per feature: numeric -> two-sample Kolmogorov-Smirnov, drift when p < 0.05; categorical -> Jensen-Shannon
   distance, drift when >= 0.1; the **dataset-drift share** (drifted / evaluated features) and **prediction
   drift** (JS on predicted classes, KS on regression predictions); missing-value shares are shown;
-- performance: the selection metric on labelled live predictions (P4-8) against the stored offline value
-  (relative worsening > 10 %), evaluated only with at least 30 labels;
+- performance: the selection metric on the labelled predictions **inside the same window as the drift
+  verdict** (labels read for exactly those prediction ids, in the same snapshot), against the stored offline
+  value (relative worsening > 10 %), evaluated only with at least 30 labels in the window. A seeded bootstrap
+  (200 resamples, one-sided 90 % lower bound, seed derived from the scored prediction ids) guards against
+  small-sample noise: verdict `triggered` (worse than 10 % and the lower bound is above zero), `clear` (not
+  worse than 10 %) or `inconclusive` (worse by the point estimate but within sampling noise: no verdict).
+  F1/accuracy/R² are higher-is-better; RMSE/MAE lower-is-better. The window basis, the interval and the label
+  count are stored in the report's JSON. `GET /deployments/{id}/performance` is unchanged (all labelled history);
 - the thresholds used are stored with every report; they are provisional defaults, overridable per run.
 
 | Status | Meaning |
@@ -80,8 +86,10 @@ new one; real and simulated stay apart; failed and interrupted runs leave no fal
 a run opens no model, dataset or package file. The P4-9 tests used small synthetic toy data (150 rows).
 P4-10 added the traffic simulator and a live run on the real demo datasets with these same thresholds:
 see `docs/simulator.md` for what the shifted copies did and did not trip (the feature-share rule did not
-fire on either dataset; `performance_drop` does not clear after recovery because live performance is not
-windowed like drift).
+fire on either dataset). That run also showed `performance_drop` staying open after recovery, because live
+performance then used all labelled history; it is now windowed like drift (`tests/test_performance_window.py`;
+the simulator recovery test expects it to resolve). The live numbers in `docs/simulator.md` were measured
+before that change.
 
 ## Limits
 

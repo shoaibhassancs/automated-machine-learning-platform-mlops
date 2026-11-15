@@ -72,10 +72,22 @@ class DatabaseHealth(Strict):
     head: str | None
 
 
+class IsolationReport(Strict):
+    """Whether this process is wired to a throwaway stack (E2E safety). Booleans, reason codes and
+    two one-way identifiers only: no path, host, user, password or token."""
+
+    isolated: bool
+    checks: dict[str, bool]
+    reasons: list[str]
+    database_id: str | None
+    run_id: str | None
+
+
 class Health(Strict):
     status: Literal["ok", "degraded"]
     database: DatabaseHealth
     worker: Literal["running", "stopped", "unknown"] = "unknown"  # is a job worker holding the lock
+    isolation: IsolationReport | None = None
 
 
 # -- profile ----------------------------------------------------------------------------------
@@ -626,6 +638,68 @@ class LabelList(Strict):
     deployment_id: int
     labels: list[LabelModel]
     next_before_id: int | None = Field(description="Pass as `before_id` for the next page.")
+
+
+class PredictionModel(Strict):
+    id: str
+    created_at: str
+    model_version: int
+    is_simulated: bool
+    prediction: str | float | None = Field(description="What the model answered for this row.")
+    confidence: float | None = Field(
+        description="The predicted class's probability (classification only)."
+    )
+    latency_ms: float
+    true_value: str | None = Field(description="The recorded true value, if one was sent.")
+
+
+class PredictionList(Strict):
+    deployment_id: int
+    scope: Literal["real", "simulated", "all"]
+    predictions: list[PredictionModel] = Field(
+        description="Newest first. Input values are not returned."
+    )
+    next_before: str | None = Field(
+        description=(
+            "Pass as `before` for the next page. (Predictions have no numeric id, so this "
+            "endpoint's cursor is a string, not `before_id`.)"
+        )
+    )
+
+
+class ActivityCounts(Strict):
+    predictions: int
+    labelled: int
+
+
+class ActivityBucket(Strict):
+    start: str = Field(description="Start of the bucket (UTC).")
+    real: ActivityCounts
+    simulated: ActivityCounts
+
+
+class ActivityTotals(Strict):
+    real: ActivityCounts
+    simulated: ActivityCounts
+
+
+class ActivityLatency(Strict):
+    mean: float | None
+    p95: float | None
+    predictions: int
+
+
+class ActivityReport(Strict):
+    deployment_id: int
+    scope: Literal["real", "simulated", "all"]
+    since: str
+    until: str
+    bucket: Literal["minute", "hour", "day"]
+    buckets: list[ActivityBucket] = Field(
+        description="Every bucket in the range, empty ones included. At most 500."
+    )
+    totals: ActivityTotals
+    latency_ms: ActivityLatency
 
 
 class TrafficCounts(Strict):

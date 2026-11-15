@@ -1,0 +1,23 @@
+{
+  "status": "ok",
+  "database": {
+    "reachable": true,
+    "at_head": true,
+    "revision": "0007",
+    "head": "0007"
+  },
+  "worker": "running",
+  "isolation": {
+    "isolated": true,
+    "checks": {
+      "database": true,
+      "store": true,
+      "models": true,
+      "mlflow": true,
+      "token": true
+    },
+    "reasons": [],
+    "database_id": "e4a66c46a29b18e9",
+    "run_id": "e03d37b0ca680322"
+  }
+}

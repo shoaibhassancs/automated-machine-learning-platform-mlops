@@ -35,6 +35,8 @@ UNPAGED = {
     "/models/{name}/versions": "one model's versions (a handful)",
 }
 OFFSET_PAGED = {"/jobs/{job_id}": "after_seq", "/models/{name}/events": "after_seq"}
+# Predictions have a UUID id (no numeric key), so this one list pages by a string cursor.
+CURSOR_PAGED = {"/deployments/{deployment_id}/predictions": ("before", "next_before")}
 
 
 def resolve(spec: dict[str, Any], node: Any) -> Any:
@@ -83,17 +85,18 @@ def test_paged_lists_share_one_pagination_contract() -> None:
         schema = op["responses"]["200"]["content"]["application/json"]["schema"]
         if "limit" in params:
             paged.add(path)
-            assert "before_id" in params, path
+            cursor, next_cursor = CURSOR_PAGED.get(path, ("before_id", "next_before_id"))
+            assert cursor in params, path
             assert (
                 params["limit"]["schema"]["maximum"] <= 100
                 and params["limit"]["schema"]["default"] <= params["limit"]["schema"]["maximum"]
             ), path
-            assert "next_before_id" in resolve(spec, schema)["properties"], path
+            assert next_cursor in resolve(spec, schema)["properties"], path
         elif str(schema.get("$ref", "")).endswith("List"):  # DatasetList, ModelVersionList, ...
             unpaged.add(path)
     assert unpaged - set(OFFSET_PAGED) == set(UNPAGED)
     assert {"/alerts", "/jobs", "/deployments", "/deployments/{deployment_id}/reports"} <= paged
-    assert {"/deployments/{deployment_id}/feedback"} <= paged
+    assert {"/deployments/{deployment_id}/feedback", *CURSOR_PAGED} <= paged
 
 
 def test_serving_spec_has_the_small_documented_surface() -> None:

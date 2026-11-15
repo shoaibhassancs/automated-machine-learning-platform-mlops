@@ -1,0 +1,18 @@
+{
+  "model": "abalone",
+  "versions": [
+    {
+      "model": "abalone",
+      "version": 1,
+      "status": "staging",
+      "package_id": "m-20261114T040218Z-7e27e89c",
+      "job_id": 1,
+      "dataset": "abalone-pool@v1",
+      "algorithm": "ridge",
+      "task": "regression",
+      "target": "Rings",
+      "registered_at": "2026-11-14T04:02:20.709868+00:00",
+      "status_changed_at": "2026-11-14T04:02:20.737600+00:00"
+    }
+  ]
+}

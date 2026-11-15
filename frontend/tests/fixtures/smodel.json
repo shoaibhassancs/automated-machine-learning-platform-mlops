@@ -1,0 +1,50 @@
+{
+  "deployment": {
+    "deployment_id": 1,
+    "model": "abalone",
+    "version": 1,
+    "package_id": "m-20261114T040218Z-7e27e89c",
+    "task": "regression"
+  },
+  "target": "Rings",
+  "algorithm": "ridge",
+  "classes": null,
+  "input_columns": [
+    {
+      "name": "Length",
+      "kind": "numeric"
+    },
+    {
+      "name": "Diameter",
+      "kind": "numeric"
+    },
+    {
+      "name": "Height",
+      "kind": "numeric"
+    },
+    {
+      "name": "Whole_weight",
+      "kind": "numeric"
+    },
+    {
+      "name": "Shucked_weight",
+      "kind": "numeric"
+    },
+    {
+      "name": "Viscera_weight",
+      "kind": "numeric"
+    },
+    {
+      "name": "Shell_weight",
+      "kind": "numeric"
+    },
+    {
+      "name": "Sex",
+      "kind": "categorical"
+    }
+  ],
+  "deployed_at": "2026-11-14T04:02:20.776711+00:00",
+  "loaded_at": "2026-11-14T04:02:20.877535+00:00",
+  "registry_status": "staging",
+  "max_rows": 100
+}

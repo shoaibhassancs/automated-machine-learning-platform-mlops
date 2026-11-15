@@ -1,6 +1,164 @@
 {
   "components": {
     "schemas": {
+      "ActivityBucket": {
+        "additionalProperties": false,
+        "properties": {
+          "real": {
+            "$ref": "#/components/schemas/ActivityCounts"
+          },
+          "simulated": {
+            "$ref": "#/components/schemas/ActivityCounts"
+          },
+          "start": {
+            "description": "Start of the bucket (UTC).",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "real",
+          "simulated"
+        ],
+        "title": "ActivityBucket",
+        "type": "object"
+      },
+      "ActivityCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "labelled": {
+            "title": "Labelled",
+            "type": "integer"
+          },
+          "predictions": {
+            "title": "Predictions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "predictions",
+          "labelled"
+        ],
+        "title": "ActivityCounts",
+        "type": "object"
+      },
+      "ActivityLatency": {
+        "additionalProperties": false,
+        "properties": {
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "p95": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95"
+          },
+          "predictions": {
+            "title": "Predictions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mean",
+          "p95",
+          "predictions"
+        ],
+        "title": "ActivityLatency",
+        "type": "object"
+      },
+      "ActivityReport": {
+        "additionalProperties": false,
+        "properties": {
+          "bucket": {
+            "enum": [
+              "minute",
+              "hour",
+              "day"
+            ],
+            "title": "Bucket",
+            "type": "string"
+          },
+          "buckets": {
+            "description": "Every bucket in the range, empty ones included. At most 500.",
+            "items": {
+              "$ref": "#/components/schemas/ActivityBucket"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "deployment_id": {
+            "title": "Deployment Id",
+            "type": "integer"
+          },
+          "latency_ms": {
+            "$ref": "#/components/schemas/ActivityLatency"
+          },
+          "scope": {
+            "enum": [
+              "real",
+              "simulated",
+              "all"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "since": {
+            "title": "Since",
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ActivityTotals"
+          },
+          "until": {
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deployment_id",
+          "scope",
+          "since",
+          "until",
+          "bucket",
+          "buckets",
+          "totals",
+          "latency_ms"
+        ],
+        "title": "ActivityReport",
+        "type": "object"
+      },
+      "ActivityTotals": {
+        "additionalProperties": false,
+        "properties": {
+          "real": {
+            "$ref": "#/components/schemas/ActivityCounts"
+          },
+          "simulated": {
+            "$ref": "#/components/schemas/ActivityCounts"
+          }
+        },
+        "required": [
+          "real",
+          "simulated"
+        ],
+        "title": "ActivityTotals",
+        "type": "object"
+      },
       "AlertEventModel": {
         "additionalProperties": false,
         "properties": {
@@ -1178,6 +1336,16 @@
           "database": {
             "$ref": "#/components/schemas/DatabaseHealth"
           },
+          "isolation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IsolationReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "status": {
             "enum": [
               "ok",
@@ -1252,6 +1420,61 @@
           "counts"
         ],
         "title": "HistogramModel",
+        "type": "object"
+      },
+      "IsolationReport": {
+        "additionalProperties": false,
+        "description": "Whether this process is wired to a throwaway stack (E2E safety). Booleans, reason codes and\ntwo one-way identifiers only: no path, host, user, password or token.",
+        "properties": {
+          "checks": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Checks",
+            "type": "object"
+          },
+          "database_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Database Id"
+          },
+          "isolated": {
+            "title": "Isolated",
+            "type": "boolean"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "required": [
+          "isolated",
+          "checks",
+          "reasons",
+          "database_id",
+          "run_id"
+        ],
+        "title": "IsolationReport",
         "type": "object"
       },
       "JobConfigModel": {
@@ -3157,6 +3380,128 @@
           "description"
         ],
         "title": "ParamModel",
+        "type": "object"
+      },
+      "PredictionList": {
+        "additionalProperties": false,
+        "properties": {
+          "deployment_id": {
+            "title": "Deployment Id",
+            "type": "integer"
+          },
+          "next_before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass as `before` for the next page. (Predictions have no numeric id, so this endpoint's cursor is a string, not `before_id`.)",
+            "title": "Next Before"
+          },
+          "predictions": {
+            "description": "Newest first. Input values are not returned.",
+            "items": {
+              "$ref": "#/components/schemas/PredictionModel"
+            },
+            "title": "Predictions",
+            "type": "array"
+          },
+          "scope": {
+            "enum": [
+              "real",
+              "simulated",
+              "all"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deployment_id",
+          "scope",
+          "predictions",
+          "next_before"
+        ],
+        "title": "PredictionList",
+        "type": "object"
+      },
+      "PredictionModel": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The predicted class's probability (classification only).",
+            "title": "Confidence"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_simulated": {
+            "title": "Is Simulated",
+            "type": "boolean"
+          },
+          "latency_ms": {
+            "title": "Latency Ms",
+            "type": "number"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "integer"
+          },
+          "prediction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the model answered for this row.",
+            "title": "Prediction"
+          },
+          "true_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The recorded true value, if one was sent.",
+            "title": "True Value"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "model_version",
+          "is_simulated",
+          "prediction",
+          "confidence",
+          "latency_ms",
+          "true_value"
+        ],
+        "title": "PredictionModel",
         "type": "object"
       },
       "ProfileReport": {
@@ -6896,6 +7241,201 @@
         ]
       }
     },
+    "/deployments/{deployment_id}/activity": {
+      "get": {
+        "description": "Read-only counts of predictions per time bucket (empty buckets included), with how many are labelled, real and simulated traffic kept apart, plus mean and 95th-percentile latency. `since` and `until` set the range (default: the first prediction to now); `bucket` is chosen automatically (at most 200 points) unless given. At most 500 buckets: a larger request is refused with 422.",
+        "operationId": "deployment_activity_deployments__deployment_id__activity_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deployment_id",
+            "required": true,
+            "schema": {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Deployment Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "real",
+                "simulated",
+                "all"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "minute",
+                    "hour",
+                    "day"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bucket"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the API does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such deployment, model or version"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The change conflicts with the deployment or registry state"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Invalid input"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The deployment tables are not available"
+          }
+        },
+        "summary": "Prediction activity over time",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
     "/deployments/{deployment_id}/feedback": {
       "get": {
         "operationId": "deployment_feedback_deployments__deployment_id__feedback_get",
@@ -7456,6 +7996,209 @@
           }
         },
         "summary": "Live performance of a deployment, from labelled predictions only",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/deployments/{deployment_id}/predictions": {
+      "get": {
+        "description": "Read-only. One row per logged prediction: when, which version, the answer, the confidence (classification), latency and the recorded true value if any. The input values are not returned. `scope` separates real from simulated traffic (default `real`); `since` (inclusive) and `until` (exclusive) filter by time. Paged by the string cursor `before` / `next_before` because predictions have no numeric id.",
+        "operationId": "deployment_predictions_deployments__deployment_id__predictions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deployment_id",
+            "required": true,
+            "schema": {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Deployment Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "real",
+              "enum": [
+                "real",
+                "simulated",
+                "all"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PredictionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request, or a Host the API does not accept"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such deployment, model or version"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The change conflicts with the deployment or registry state"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unsupported content type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Invalid input"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The deployment tables are not available"
+          }
+        },
+        "summary": "Prediction history of a deployment, newest first",
         "tags": [
           "deployments"
         ]

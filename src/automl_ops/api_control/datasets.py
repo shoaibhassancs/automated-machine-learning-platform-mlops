@@ -25,6 +25,7 @@ from automl_ops.api_control.schemas import (
     DatasetModel,
     ExploreReport,
     Health,
+    IsolationReport,
     ProfileReport,
     TaskCheckRequest,
     TaskReportModel,
@@ -48,6 +49,7 @@ from automl_ops.db.migrate import DbStatus
 from automl_ops.deployments import DeploymentRepository
 from automl_ops.feedback import FeedbackRepository
 from automl_ops.ingest import IngestError
+from automl_ops.isolation import NOT_ASSESSED, Isolation
 from automl_ops.jobs import JobRepository
 from automl_ops.monitoring import MonitoringRepository
 from automl_ops.profile import profile_frame as _profile_frame
@@ -82,6 +84,7 @@ class Context:
     serving: ServingClient | None = None  # P4-7; None: no serving app to notify
     worker_state: Callable[[], str] = lambda: "unknown"  # "running" | "stopped" | "unknown"
     tracking_problem: Callable[[], str | None] = lambda: None  # why track=true cannot be honoured
+    isolation: Callable[[], Isolation] = lambda: NOT_ASSESSED  # throwaway-stack report (E2E safety)
 
 
 def context(request: Request) -> Context:
@@ -144,10 +147,15 @@ def health(response: Response, ctx: Ctx) -> Health:
         worker = ctx.worker_state()
     except Exception:
         worker = "unknown"
+    try:
+        isolation = IsolationReport(**ctx.isolation().to_dict())
+    except Exception:  # an unreadable setting must not break the health check
+        isolation = IsolationReport(**NOT_ASSESSED.to_dict())
     return Health(
         status="ok" if healthy else "degraded",
         database=database,
         worker=worker,  # type: ignore[arg-type]
+        isolation=isolation,
     )
 
 

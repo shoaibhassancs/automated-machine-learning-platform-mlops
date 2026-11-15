@@ -17,7 +17,7 @@ Datasets are addressed by name and version number (`abalone@v1` is `/datasets/ab
 
 | Method and path | What it does |
 | --- | --- |
-| `GET /health` | 200 `ok`, or 503 `degraded` if the database is unreachable or not at the head; also `worker`: `running`, `stopped` or `unknown` (is a job worker holding its lock) |
+| `GET /health` | 200 `ok`, or 503 `degraded` if the database is unreachable or not at the head; also `worker`: `running`, `stopped` or `unknown` (is a job worker holding its lock), and `isolation` (whether this process is wired to a throwaway E2E stack: booleans, reason codes and one-way ids only; see `docs/simulator.md`). The serving app's `/health` carries the same `isolation` object |
 | `POST /datasets` | Upload a CSV (multipart: `name`, `file`, optional `add_version`). 201 if a version was stored, 200 if identical content already existed |
 | `GET /datasets` | Every dataset with its versions |
 | `GET /datasets/{name}` | One dataset's versions |
@@ -36,6 +36,7 @@ Datasets are addressed by name and version number (`abalone@v1` is `/datasets/ab
 
 | `GET /registry/sync`, `GET\|POST /models/{name}/sync`, `GET /models/{name}/mirror/check`, `POST /models/{name}/reconcile` | The opt-in MLflow mirror of the registry: standing, sync, read-only check, explicit audited reconcile (P4-6, `docs/registry.md`) |
 | `POST /deployments`, `GET /deployments[/active\|/{id}]`, `POST /deployments/{id}/switch`, `POST /deployments/rollback`, `POST /deployments/{id}/undeploy` | Which registered version is live, its history, and the serving app's state after each change (P4-7, `docs/serving.md`) |
+| `GET /deployments/{id}/predictions`, `GET /deployments/{id}/activity` | Read-only history and activity for the UI (Phase 5): predictions newest first (answer, confidence, latency, recorded true value; **no input values**), paged by the string cursor `before` / `next_before` because predictions have no numeric id; counts per time bucket (empty buckets included, real and simulated apart, at most 500 buckets, else 422). `scope`, `since` and `until` filter. |
 | `GET /deployments/{id}/performance`, `GET /deployments/{id}/feedback` | Live performance from labelled predictions only, with the offline summary shown separately; the label history (P4-8, `docs/serving.md`). Labels are submitted to the serving app's `POST /feedback` |
 | `POST\|GET /models/{name}/versions/{n}/reference`, `POST /deployments/{id}/monitor`, `GET /deployments/{id}/monitoring\|/reports`, `GET /reports/{id}`, `GET /alerts[/{id}]`, `POST /alerts/{id}/acknowledge\|/resolve` | Drift reference samples, on-demand monitoring runs and reports, alerts and their audit trail (P4-9, `docs/monitoring.md`) |
 

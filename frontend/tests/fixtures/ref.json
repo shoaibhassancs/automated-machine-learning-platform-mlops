@@ -1,0 +1,15 @@
+{
+  "id": 1,
+  "model": "abalone",
+  "version": 1,
+  "package_id": "m-20261114T040218Z-7e27e89c",
+  "dataset_ref": "abalone-pool@v1",
+  "dataset_sha256": "47ed8f7a92c9c6b3451f0b073d824008c9340bc09d2077ff57fb5cc8246c50ae",
+  "train_sha256": "8a2b590b0d20a82d728f04a3201f0ca02ab593cc9274bdd5817701c2be8dfc47",
+  "seed": 42,
+  "train_rows": 2339,
+  "sample_rows": 1000,
+  "sample_sha256": "54fc2caa547b35c592c02055885f86645be64ecd92cb1aa884ec81c74a1b57b2",
+  "created_at": "2026-11-14T04:02:22.398127+00:00",
+  "created": null
+}

@@ -1688,3 +1688,106 @@ service-dependency health checks and the Compose memory measurement are Phase 6.
 Linux. Pagination was not added to `/algorithms`, `/datasets`, `/models`, `/models/{name}/versions` (listed in `docs/api.md`).
 Monitoring timing at the maximum window was not measured. The test-set reuse decision is still **open**; nothing here reads it.
 Reports, alerts and the prediction log still grow without limit.
+
+
+## D-047 — Two owner-approved follow-ups: windowed performance alert; isolated end-to-end script (built and verified; stopped)
+
+**Date** 2026-11-14. **Type** implementation of owner decisions. **Status** complete, awaiting the owner's review.
+
+**Owner decisions (approved).** (1) Score performance over the labels inside the same latest-1,000-prediction window as drift, read in the
+same REPEATABLE READ snapshot; keep the minimum of 30 labels and the 10 % threshold; 200 bootstrap resamples with a one-sided 90 %
+interval; verdicts triggered, clear, inconclusive; inconclusive or insufficient runs never change an alert; a clear, sufficiently
+evaluated run auto-resolves. (2) `make e2e` must run on an isolated stack by construction: separate throwaway application database,
+isolated MLflow backend, temporary folders outside `data/`; verify before any write; ownership-proved cleanup; no force option; health
+fields free of credentials and paths. Thresholds, Evidently, retention (documented as a known limitation), the Compose restart policy
+and the test-set reuse policy are unchanged.
+
+**What changed.** `monitor.py` (`bootstrap_seed`, `performance_verdict`, constants `BOOTSTRAP_RESAMPLES` 200, `BOOTSTRAP_CONFIDENCE` 0.90);
+`feedback.py` (`window_performance`, `metric_sampler`, reusing the same scalar code, so F1 and RMSE direction share one definition);
+`monitoring.py` (`_window` reads the window and its labels in one snapshot; the rule uses them). `FeedbackRepository.performance` and
+`GET /deployments/{id}/performance` are unchanged (all labelled history). No migration: the window basis, label count and interval are in
+the report's JSON; old reports are untouched. New `isolation.py`, `e2e_stack.py`, `scripts/e2e_isolated.py`; `scripts/e2e_demo.py` now
+refuses before any write; additive `isolation` object on both `/health` responses (OpenAPI regenerated); `make e2e` runs the wrapper.
+Docs: monitoring, simulator, api, README (retention limitation added), CLAUDE.md. Tests: `tests/test_performance_window.py` (12),
+`tests/test_e2e_safety.py` (30); `tests/test_simulator.py` recovery test now expects `performance_drop` to resolve.
+
+**Design points.** Seed = SHA-256 of the sorted scored prediction ids (reproducible). Verdict: point estimate not beyond 10 % is clear;
+beyond 10 % and bootstrap lower bound above zero is triggered; otherwise inconclusive (no verdict). The bootstrap constants are fixed,
+provisional, not thresholds. Isolation: database named `automl_test_e2e_*` (never `automl_ops`, `mlflow`, `postgres`, templates), store
+and models outside `data/` (links followed), SQLite MLflow outside `data/`, per-run token; the report holds booleans, reason codes and
+one-way ids only. The wrapper creates its own database (stamped with a comment naming the run) and folder (owner marker), and proves
+ownership of both before deleting either; if it cannot, it deletes nothing and lists what remains (exit 3). `make e2e` never uses the
+PostgreSQL `mlflow` database (SQLite store in the temp folder), so the real `mlflow` database is never connected to.
+
+**Verification.** Full run once: ruff pass, `ruff format --check` 163 files formatted, mypy strict 142 files no issues, **1170 passed,
+2 warnings, 10 min 14 s** (the known httpx/Starlette one and a SQLAlchemy/MLflow deprecation). Live `make e2e` (Abalone, real processes):
+all 9 stages passed in about 12 s; normal phase `performance_drop` clear (RMSE 2.04 vs 2.21), shifted phase opened (5.58, bootstrap lower
+bound +147 %), recovery phase auto-resolved (2.10); throwaway database and folder removed. Afterwards: databases `automl_ops`, `mlflow`,
+`postgres` and templates only; `automl_ops` at revision 0007; no leftover `automl-e2e-*` folder or server process; `pyproject.toml` and
+`uv.lock` unchanged (hash recorded before the run; modification times 2026-11-13 14:09:53, before this work); file counts of `data/store`,
+`models`, `backups`, `mlflow`, `mlflow-pg`, `demo`, `raw` equal to the previous gate (4, 12, 38, 37, 39, 7, 2) and `data/` itself last modified
+2026-11-13.
+
+**Mistakes and limits.** Two of my own new tests failed on a first run (the `COMMENT ON DATABASE` statement takes no bind parameters) and
+left two empty `automl_test_e2e_*` databases; I confirmed each had no tables and dropped them by exact name. A Git command I added by
+mistake to one shell call was blocked and never ran. Not verified: Adult was not re-run live after the change (one Abalone run, one seed);
+the false-trigger bound in the test (at most 15 % over 120 seeded windows) is a test limit, not a measured error rate; the worker's own wiring
+is set by the wrapper and not reported over HTTP; the guard is protection against mistakes on a single-user machine, not a security boundary;
+bootstrap lower bound above zero is a weak significance test by design (owner-approved). No retention remains a known limitation. Not run:
+Compose persistence check, Linux, browser tests (no UI).
+
+
+## D-048 — Phase 5 (frontend, Steps 27-32) built and verified; stopped at Gate 5
+
+**Date** 2026-11-14/15. **Type** implementation of an owner-approved phase. **Status** complete, awaiting the owner's Gate 5 review.
+
+**Owner decisions (approved).** Implement Steps 27-32 in one run; install the listed npm dependencies with exact versions and a committed
+`package-lock.json`, and download Playwright Chromium (this overrides the plan's earlier "no Playwright in V1"); Recharts; two additive read-only
+backend endpoints (`GET /deployments/{id}/predictions`, `/activity`); lifecycle-map landing page; automated UI tests only on a seeded, fully
+isolated throwaway stack (never the real application or MLflow databases); the proposed `frontend/` layout and `.gitignore` entries.
+
+**What was built.** `frontend/`: React 19.3.1, TypeScript 5.9.3 (strict), Vite 8.3.8, TanStack Query, React Router, Recharts 3.10.1, openapi-fetch, plain CSS
+(light/dark tokens). Screens: Overview (lifecycle map and next step), Datasets (upload, preview, profile, validation, task setup), Training (job list, new job,
+live progress, selection rule, out-of-fold charts, final test with its limitation, register), Experiments (history, compare), Models (registry, versions,
+promote/archive/rollback, history, drift reference), Deployment (deploy, switch, roll back, stop, history), Try a prediction (form generated from the served
+model, feedback), Monitoring (activity, live performance, drift, alerts), Reports, Alerts (acknowledge/resolve with reason), Predictions and feedback.
+Backend (additive, read-only, no migration): `GET /deployments/{id}/predictions` (newest first; answer, confidence, latency, recorded true value; **no input
+values**; string cursor `before`/`next_before` because predictions have a UUID id; `scope`, `since`, `until`) and `GET /deployments/{id}/activity` (counts per
+minute/hour/day bucket, empty buckets included, real and simulated apart, at most 500 buckets else 422, latency mean and p95). `test_api_quality.py` now
+knows one documented cursor-paged exception. `scripts/ui_stack.py` (new) builds on `IsolatedStack`: throwaway database `automl_test_e2e_*`, temp folders,
+SQLite MLflow, given ports and UI origin, optional demo seeding; `make ui-install|ui-dev|ui-demo|ui-check|ui-e2e`. Docs: `docs/frontend.md`,
+`frontend/README.md`, `docs/api.md`, README, CLAUDE.md, BUILD_PLAN, ARCHITECTURE, BUILD_LOG. `.gitignore`: `frontend/node_modules`, `dist`,
+`playwright-report`, `test-results`, `blob-report`. Thresholds, monitoring behaviour and every existing endpoint are unchanged.
+
+**Verification (final run).** Backend: ruff pass, `ruff format --check` 167 files, mypy strict 144 files no issues, **1179 passed, 2 warnings, 11 min 33 s**
+(includes `tests/test_predictions_api.py`, 8 tests, and the UI-stack environment test). Frontend: ESLint (typescript-eslint, react-hooks, jsx-a11y) clean,
+Prettier clean, `tsc --noEmit` strict clean, generated API types current, **Vitest 61 passed** (formatting, chart data equals API data, metric direction,
+registry rules, recorded responses checked against the OpenAPI schemas, client error mapping, component tests with a mock server), production build ok.
+**Playwright (Chromium) 111 passed in 4.4 min** on two throwaway stacks (one empty, where the whole lifecycle is built through the browser; one seeded with
+the Abalone demo story): upload (and a bad CSV showing the API's message), inspect, configure, train with live progress and charts, compare, register,
+promote, deploy, predict, feedback, switch, roll back, monitor, alert acknowledge/resolve, paged predictions, unreachable-backend state; keyboard tests
+(skip link, focus to the page title, dialog behaviour, mobile menu); **axe-core (WCAG 2.0/2.1/2.2 A and AA rules) found no violations at all** on every
+screen in light mode and on five key screens in dark mode, and on the open dialog and glossary note; layout at 390, 900 and 1280 px with no horizontal
+page scroll on any of 21 screens. Manual visual review: I looked at screenshots at the three widths for most screens and fixed what I found (focus ring
+on the page title, a menu button visible on desktop, top-bar overflow on mobile, long axis labels, thin activity bars, histograms stacking at 900 px).
+Afterwards: databases `automl_ops`, `mlflow`, `postgres` and templates only, `automl_ops` at revision 0007, no leftover `automl_test_*` database, no
+leftover folder or process, `pyproject.toml`/`uv.lock` hashes identical to before, file counts and a size/time digest of `data/store`, `models`,
+`backups`, `mlflow`, `mlflow-pg`, `demo`, `raw` identical to before. I applied no migration.
+
+**Dependencies.** Production: react, react-dom, react-router-dom, @tanstack/react-query, recharts, openapi-fetch. Development: vite,
+@vitejs/plugin-react, typescript, openapi-typescript, vitest, jsdom, @testing-library/{react,user-event,jest-dom}, msw, eslint, @eslint/js, globals,
+typescript-eslint, eslint-plugin-react-hooks, eslint-plugin-jsx-a11y, prettier, @playwright/test, @axe-core/playwright, @types/react, @types/react-dom and
+**@types/node** (not in the proposal's list; needed for the Vite config and test scripts' Node types; flagged). All exact versions. TypeScript is 5.9.3 not
+7.x and ESLint is 9.39.5 not 10.x on purpose: typescript-eslint requires TypeScript below 6.1, openapi-typescript requires 5.x, and
+eslint-plugin-jsx-a11y supports ESLint up to 9. `node_modules` is about 298 MB and the Playwright browser cache (Chromium and its headless shell) about 1.1 GB (more than the proposal's estimate). Free disk was about 11 GiB before this phase and is 5.7 GiB now; my additions are about 1.4 GB, the rest is not from this work. Reclaimable (nothing deleted): the npm cache (1.6 GB), Docker build cache (1.7 GB), Playwright's cache.
+**Security audit** (`npm audit`): production dependencies 0 findings; the full tree has 7 moderate findings, all one advisory in `minimatch`
+(GHSA-g3hv-75wg-m249, denial of service through glob parts) reached only through the development lint toolchain (`typescript-eslint`). Reported, not
+upgraded, as instructed.
+
+**Mistakes and limits.** I once put a `git status` into a shell command (blocked, never ran; recorded in D-047) and, in this phase, a `sed -i` without a backup
+suffix on macOS and one `rm` through shell variables that the safety check refused; I removed the three leftover temp folders of my own test runs by
+listing and removing their files and folders by exact path, and the test teardown now removes its own folder. The first seeded demo (600 rows per phase)
+did not auto-resolve drift because the 1,000-row window still held shifted rows; the seed uses 1,000. Not verified: Safari and Firefox; a screen
+reader (VoiceOver) is NOT RUN; contrast was checked only by axe; Linux not run; Windows not run. The activity chart's "All time" range spans the first
+prediction to now (the API's default), and the UI trims empty edges. Fixtures are a snapshot. Real-stack use of the UI (not the throwaway stack) was not
+exercised by automated tests by design; the header tells the user which kind of backend they are on. Compose, containers and CI for the frontend are Phase 6.

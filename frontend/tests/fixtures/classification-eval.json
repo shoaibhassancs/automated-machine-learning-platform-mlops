@@ -1,0 +1,57 @@
+{
+  "rows": 100,
+  "classes": ["neg", "pos"],
+  "metrics": {
+    "accuracy": 0.85,
+    "precision_macro": 0.84,
+    "recall_macro": 0.85,
+    "f1_macro": 0.845,
+    "roc_auc": 0.91
+  },
+  "undefined": {},
+  "confusion_matrix": [
+    [40, 10],
+    [5, 45]
+  ],
+  "per_class": [
+    {
+      "class": "neg",
+      "precision": 0.889,
+      "recall": 0.8,
+      "f1": 0.842,
+      "support": 50
+    },
+    {
+      "class": "pos",
+      "precision": 0.818,
+      "recall": 0.9,
+      "f1": 0.857,
+      "support": 50
+    }
+  ],
+  "roc_curves": [
+    {
+      "class": "neg",
+      "fpr": [0, 0.1, 0.4, 1],
+      "tpr": [0, 0.6, 0.9, 1]
+    },
+    {
+      "class": "pos",
+      "fpr": [0, 0.2, 1],
+      "tpr": [0, 0.8, 1]
+    }
+  ],
+  "pr_curves": [
+    {
+      "class": "neg",
+      "recall": [0, 0.5, 1],
+      "precision": [1, 0.9, 0.5]
+    },
+    {
+      "class": "pos",
+      "recall": [0, 0.6, 1],
+      "precision": [1, 0.85, 0.5]
+    }
+  ],
+  "curve_notes": []
+}

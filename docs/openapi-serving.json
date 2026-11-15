@@ -204,6 +204,16 @@
             ],
             "title": "Error"
           },
+          "isolation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IsolationReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "loaded_deployment_id": {
             "anyOf": [
               {
@@ -265,6 +275,61 @@
           "kind"
         ],
         "title": "InputColumn",
+        "type": "object"
+      },
+      "IsolationReport": {
+        "additionalProperties": false,
+        "description": "Whether this process is wired to a throwaway stack (E2E safety). Booleans, reason codes and\ntwo one-way identifiers only: no path, host, user, password or token.",
+        "properties": {
+          "checks": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Checks",
+            "type": "object"
+          },
+          "database_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Database Id"
+          },
+          "isolated": {
+            "title": "Isolated",
+            "type": "boolean"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "required": [
+          "isolated",
+          "checks",
+          "reasons",
+          "database_id",
+          "run_id"
+        ],
+        "title": "IsolationReport",
         "type": "object"
       },
       "LabelModel": {

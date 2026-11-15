@@ -1,0 +1,22 @@
+{
+  "id": 1,
+  "model": "abalone",
+  "version": 1,
+  "package_id": "m-20261114T040218Z-7e27e89c",
+  "status": "active",
+  "action": "deploy",
+  "reason": "end-to-end demo",
+  "replaced_id": null,
+  "deployed_at": "2026-11-14T04:02:20.776711+00:00",
+  "ended_at": null,
+  "end_reason": null,
+  "registry_status": "staging",
+  "task": "regression",
+  "algorithm": "ridge",
+  "serving": {
+    "state": "in_sync",
+    "loaded_deployment_id": 1,
+    "model_state": "ready",
+    "error": null
+  }
+}

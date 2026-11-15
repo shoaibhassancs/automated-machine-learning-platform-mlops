@@ -1,0 +1,17 @@
+{
+  "dataset_ref": "abalone-pool@v1",
+  "sha256": "47ed8f7a92c9c6b3451f0b073d824008c9340bc09d2077ff57fb5cc8246c50ae",
+  "ok": true,
+  "target": null,
+  "errors": 0,
+  "warnings": 0,
+  "infos": 0,
+  "thresholds": {
+    "min_rows_error": 30,
+    "min_rows_warning": 100,
+    "high_missing_pct": 40.0,
+    "id_like_min_rows": 50,
+    "id_like_unique_ratio": 0.9
+  },
+  "findings": []
+}

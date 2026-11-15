@@ -1,0 +1,260 @@
+{
+  "dataset_ref": "abalone-pool@v1",
+  "sha256": "47ed8f7a92c9c6b3451f0b073d824008c9340bc09d2077ff57fb5cc8246c50ae",
+  "profile_format": 1,
+  "settings": {
+    "max_categories": 50,
+    "mixed_min_numeric_share": 0.5,
+    "top_n": 20
+  },
+  "rows": 2924,
+  "columns": 9,
+  "duplicate_rows": 0,
+  "rows_in_duplicate_groups": 0,
+  "rows_with_missing": 0,
+  "missing_cells": 0,
+  "column_profiles": [
+    {
+      "name": "Sex",
+      "position": 1,
+      "kind": "categorical",
+      "count": 2924,
+      "missing": 0,
+      "missing_pct": 0.0,
+      "unique": 3,
+      "top_values": [
+        {
+          "value": "M",
+          "count": 1090
+        },
+        {
+          "value": "I",
+          "count": 924
+        },
+        {
+          "value": "F",
+          "count": 910
+        }
+      ],
+      "numeric": null,
+      "numeric_share": 0.0,
+      "non_numeric_examples": [],
+      "na_like_count": 0,
+      "na_like_tokens": [],
+      "leading_zero_count": 0,
+      "leading_zero_examples": []
+    },
+    {
+      "name": "Length",
+      "position": 2,
+      "kind": "float",
+      "count": 2924,
+      "missing": 0,
+      "missing_pct": 0.0,
+      "unique": 129,
+      "top_values": [
+        {
+          "value": "0.575",
+          "count": 70
+        },
+        {
+          "value": "0.625",
+          "count": 69
+        },
+        {
+          "value": "0.55",
+          "count": 66
+        },
+        {
+          "value": "0.63",
+          "count": 59
+        },
+        {
+          "value": "0.5",
+          "count": 58
+        },
+        {
+          "value": "0.58",
+          "count": 58
+        },
+        {
+          "value": "0.61",
+          "count": 57
+        },
+        {
+          "value": "0.59",
+          "count": 56
+        },
+        {
+          "value": "0.6",
+          "count": 55
+        },
+        {
+          "value": "0.62",
+          "count": 55
+        },
+        {
+          "value": "0.57",
+          "count": 53
+        },
+        {
+          "value": "0.645",
+          "count": 53
+        },
+        {
+          "value": "0.53",
+          "count": 52
+        },
+        {
+          "value": "0.595",
+          "count": 51
+        },
+        {
+          "value": "0.65",
+          "count": 51
+        },
+        {
+          "value": "0.56",
+          "count": 50
+        },
+        {
+          "value": "0.515",
+          "count": 48
+        },
+        {
+          "value": "0.585",
+          "count": 48
+        },
+        {
+          "value": "0.52",
+          "count": 47
+        },
+        {
+          "value": "0.525",
+          "count": 46
+        }
+      ],
+      "numeric": {
+        "min": 0.075,
+        "max": 0.8,
+        "mean": 0.524599863201,
+        "std": 0.119400131172,
+        "median": 0.545,
+        "p25": 0.45,
+        "p75": 0.615
+      },
+      "numeric_share": 1.0,
+      "non_numeric_examples": [],
+      "na_like_count": 0,
+      "na_like_tokens": [],
+      "leading_zero_count": 0,
+      "leading_zero_examples": []
+    },
+    {
+      "name": "Diameter",
+      "position": 3,
+      "kind": "float",
+      "count": 2924,
+      "missing": 0,
+      "missing_pct": 0.0,
+      "unique": 108,
+      "top_values": [
+        {
+          "value": "0.45",
+          "count": 101
+        },
+        {
+          "value": "0.475",
+          "count": 90
+        },
+        {
+          "value": "0.4",
+          "count": 84
+        },
+        {
+          "value": "0.5",
+          "count": 79
+        },
+        {
+          "value": "0.47",
+          "count": 71
+        },
+        {
+          "value": "0.46",
+          "count": 66
+        },
+        {
+          "value": "0.525",
+          "count": 65
+        },
+        {
+          "value": "0.465",
+          "count": 64
+        },
+        {
+          "value": "0.48",
+          "count": 62
+        },
+        {
+          "value": "0.375",
+          "count": 60
+        },
+        {
+          "value": "0.35",
+          "count": 58
+        },
+        {
+          "value": "0.455",
+          "count": 58
+        },
+        {
+          "value": "0.38",
+          "count": 57
+        },
+        {
+          "value": "0.44",
+          "count": 57
+        },
+        {
+          "value": "0.485",
+          "count": 56
+        },
+        {
+          "value": "0.435",
+          "count": 53
+        },
+        {
+          "value": "0.51",
+          "count": 53
+        },
+        {
+          "value": "0.42",
+          "count": 52
+        },
+        {
+          "value": "0.49",
+          "count": 51
+        },
+        {
+          "value": "0.515",
+          "count": 49
+        }
+      ],
+      "numeric": {
+        "min": 0.055,
+        "max": 0.63,
+        "mean": 0.408172024624,
+        "std": 0.0986537926688,
+        "median": 0.425,
+        "p25": 0.35,
+        "p75": 0.48
+      },
+      "numeric_share": 1.0,
+      "non_numeric_examples": [],
+      "na_like_count": 0,
+      "na_like_tokens": [],
+      "leading_zero_count": 0,
+      "leading_zero_examples": []
+    }
+  ]
+}

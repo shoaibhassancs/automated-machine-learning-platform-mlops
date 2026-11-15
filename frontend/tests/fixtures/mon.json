@@ -1,0 +1,44 @@
+{
+  "deployment_id": 1,
+  "reference_id": 1,
+  "latest_real": null,
+  "latest_simulated": {
+    "id": 4,
+    "deployment_id": 1,
+    "reference_id": 1,
+    "scope": "simulated",
+    "status": "ok",
+    "window_rows": 1000,
+    "window_start": "2026-11-14T04:02:24.551196+00:00",
+    "window_end": "2026-11-14T04:02:25.876873+00:00",
+    "thresholds": {
+      "alpha": 0.05,
+      "window": 1000,
+      "min_rows": 30,
+      "js_distance": 0.1,
+      "min_labelled": 30,
+      "feature_share": 0.5,
+      "performance_drop": 0.1
+    },
+    "summary": null,
+    "error": null,
+    "started_at": "2026-11-14T04:02:25.942845+00:00",
+    "finished_at": "2026-11-14T04:02:26.034373+00:00"
+  },
+  "unresolved_alerts": [
+    {
+      "rule": "performance_drop",
+      "scope": "simulated",
+      "severity": "critical",
+      "status": "open",
+      "n": 1
+    },
+    {
+      "rule": "prediction_shift",
+      "scope": "simulated",
+      "severity": "warning",
+      "status": "open",
+      "n": 1
+    }
+  ]
+}

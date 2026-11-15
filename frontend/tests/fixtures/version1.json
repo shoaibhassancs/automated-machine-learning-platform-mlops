@@ -1,0 +1,51 @@
+{
+  "model": "abalone",
+  "version": 1,
+  "status": "staging",
+  "package_id": "m-20261114T040218Z-7e27e89c",
+  "job_id": 1,
+  "dataset": "abalone-pool@v1",
+  "algorithm": "ridge",
+  "task": "regression",
+  "target": "Rings",
+  "registered_at": "2026-11-14T04:02:20.709868+00:00",
+  "status_changed_at": "2026-11-14T04:02:20.737600+00:00",
+  "selection_sha256": "f4d49ae61cab0466e1b6260736e15a536d58e330d7f7bbe0fa7eceb67f10dc0f",
+  "evaluation": {
+    "dataset": {
+      "ref": "abalone-pool@v1",
+      "sha256": "47ed8f7a92c9c6b3451f0b073d824008c9340bc09d2077ff57fb5cc8246c50ae"
+    },
+    "omitted": ["residual_points"],
+    "algorithm": "ridge",
+    "evaluation": {
+      "rows": 585,
+      "metrics": {
+        "r2": 0.504085146651,
+        "mae": 1.60930375178,
+        "rmse": 2.20743936745
+      },
+      "undefined": {},
+      "residual_points_note": null
+    },
+    "limitation": "This result comes from the held-out test part, read once for this package. The same test part can be reused by other jobs on the same dataset version (an open decision), and repeated use across jobs can influence model choices. It is not independent or leakage-proof.",
+    "test_split": {
+      "rows": 585,
+      "sha256": "e325d59d1292f56e271417b1b021f42e125222efe52d2b392045927c56bed7cc"
+    },
+    "positive_class": null,
+    "selection_metric": "rmse",
+    "selection_sha256": "f4d49ae61cab0466e1b6260736e15a536d58e330d7f7bbe0fa7eceb67f10dc0f"
+  },
+  "mirror": {
+    "state": "disabled",
+    "desired_seq": 2,
+    "synced_seq": 0,
+    "pending_events": 2,
+    "attempts": 0,
+    "last_error": null,
+    "last_error_kind": null,
+    "last_success_at": null,
+    "next_attempt_at": null
+  }
+}

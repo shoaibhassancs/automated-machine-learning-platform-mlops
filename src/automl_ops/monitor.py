@@ -28,8 +28,10 @@ A window or reference smaller than `min_rows` gives status `insufficient_data` a
 
 from __future__ import annotations
 
+import hashlib
 import math
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -45,6 +47,11 @@ SEVERITY = {
     "performance_drop": "critical",
 }
 LOWER_IS_BETTER = frozenset({"rmse", "mae"})
+# Provisional fixed constants (owner-approved), not thresholds: the bootstrap that guards the
+# performance rule against small-sample noise.
+BOOTSTRAP_RESAMPLES = 200
+BOOTSTRAP_CONFIDENCE = 0.90
+MIN_VALID_RESAMPLES = 100
 
 
 class MonitorError(ValueError):
@@ -326,6 +333,75 @@ def performance_comparison(
         triggered=relative > th.performance_drop,
     )
     return out
+
+
+def bootstrap_seed(prediction_ids: list[int]) -> int:
+    """A seed that depends only on which predictions are scored, so a rerun over the same window
+    gives the same interval."""
+    digest = hashlib.sha256(",".join(str(i) for i in sorted(prediction_ids)).encode()).digest()
+    return int.from_bytes(digest[:8], "big")
+
+
+def performance_verdict(
+    comparison: dict[str, Any],
+    sampler: Callable[[Array], float | None] | None,
+    rows: int,
+    seed: int,
+) -> dict[str, Any]:
+    """Add a verdict to an evaluated comparison: `triggered`, `clear` or `inconclusive`.
+
+    The point estimate decides `clear` (not worse than the threshold). When it is worse than the
+    threshold, a seeded bootstrap of the labelled rows (`BOOTSTRAP_RESAMPLES` resamples) gives a
+    one-sided `BOOTSTRAP_CONFIDENCE` lower bound on the relative worsening: `triggered` only if that
+    bound is above zero (the worsening is not explained by sampling noise), else `inconclusive`,
+    which is no verdict. Direction follows `LOWER_IS_BETTER`, so F1 and RMSE are handled alike.
+    """
+    if not comparison.get("evaluated") or sampler is None:
+        return comparison
+    if not comparison["triggered"]:
+        comparison["verdict"] = "clear"
+        return comparison
+    offline = comparison["offline"]
+    metric = comparison["metric"]
+    rng = np.random.default_rng(seed)
+    values: list[float] = []
+    for _ in range(BOOTSTRAP_RESAMPLES):
+        live = sampler(rng.integers(0, rows, size=rows))
+        if live is None:
+            continue
+        worse = (live - offline) if metric in LOWER_IS_BETTER else (offline - live)
+        values.append(worse / abs(offline))
+    interval: dict[str, Any] = {
+        "method": "bootstrap",
+        "resamples": BOOTSTRAP_RESAMPLES,
+        "valid_resamples": len(values),
+        "confidence": BOOTSTRAP_CONFIDENCE,
+        "one_sided": "lower bound of the relative worsening",
+        "seed": seed,
+        "lower": None,
+    }
+    comparison["interval"] = interval
+    lower = (
+        float(np.quantile(values, 1.0 - BOOTSTRAP_CONFIDENCE))
+        if len(values) >= MIN_VALID_RESAMPLES
+        else None
+    )
+    if lower is None:
+        interval["reason"] = "too few resamples had a defined metric"
+    else:
+        interval["lower"] = round(lower, 6)
+    if lower is not None and lower > 0:
+        comparison["verdict"] = "triggered"
+    else:
+        comparison["verdict"], comparison["triggered"], comparison["evaluated"] = (
+            "inconclusive",
+            False,
+            False,
+        )
+        comparison["reason"] = (
+            "worse than the threshold, but within sampling noise at this number of labels"
+        )
+    return comparison
 
 
 def evaluate_rules(summary: dict[str, Any], comparison: dict[str, Any]) -> list[dict[str, Any]]:
