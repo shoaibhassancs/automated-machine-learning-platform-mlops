@@ -10,6 +10,10 @@ make api                                              # control plane  127.0.0.1
 make serve                                            # serving app    127.0.0.1:8200 (AUTOML_SERVING_PORT)
 ```
 
+The control plane finds the serving app at 127.0.0.1 and `AUTOML_SERVING_PORT`. Inside the project's
+Docker images only, `AUTOML_SERVING_HOST` may instead name the serving container (a bare Compose service
+name; anything else is refused, `docs/compose.md`). The request still carries the loopback `Host` header.
+
 The two are separate processes and separate applications. The serving app does not import the
 control-plane app, MLflow, the worker or the registry mirror (a test checks this in a fresh
 interpreter); it reuses the control plane's request rules (Host check, Origin check on POST, JSON

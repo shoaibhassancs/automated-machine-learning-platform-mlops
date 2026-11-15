@@ -567,13 +567,18 @@ class WorkerLock:
 
 
 def worker_running(engine: Engine) -> bool:
-    """Is some worker holding the lock right now? (For `/health`; takes no lock itself.)"""
+    """Is some worker holding the lock in THIS database right now? (For `/health`; takes no lock
+    itself.) A worker connected to another database on the same server does not count."""
     with engine.connect() as connection:
         return bool(
             connection.execute(
                 text(
                     "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND "
-                    "classid::bigint = :a AND objid::bigint = :b AND objsubid = 2 AND granted)"
+                    "classid::bigint = :a AND objid::bigint = :b AND objsubid = 2 AND granted "
+                    # advisory locks belong to one database; pg_locks lists the whole server, so a
+                    # worker on another database (a demo or test stack) must not count
+                    "AND database = (SELECT oid FROM pg_database WHERE datname = "
+                    "current_database()))"
                 ),
                 {"a": WORKER_LOCK[0], "b": WORKER_LOCK[1]},
             ).scalar_one()

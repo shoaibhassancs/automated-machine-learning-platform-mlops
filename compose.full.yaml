@@ -1,0 +1,140 @@
+# The full local stack (Phase 6, Step 34): PostgreSQL, the control-plane API, the job worker, the
+# serving app and the UI, all on this machine. Services only: it starts no demo data and runs no
+# workflow (prepare data with `make demo-data`, then use the UI or `make e2e-compose`).
+#
+# NOT a deployment: nothing here is hosted, published to a registry, or reachable from another
+# machine. Every published port is bound to 127.0.0.1. A separate Compose project from compose.yaml
+# (the development database): its own name, containers, volumes, database and ports.
+#
+#   make full-env     # once: writes the git-ignored .env.full with a random database password
+#   make full-up      # build the three images if needed, then start the stack
+#   make full-down    # stop and remove the containers (the volumes, and so the data, are kept)
+#
+# Host ports: UI 25173, API 28100, serving 28200 (PostgreSQL is not published at all). The UI image
+# has the API addresses built in; changing a port means rebuilding it (see docs/compose.md).
+name: automl-ops-full
+
+x-backend: &backend
+  image: automl-ops-backend:local
+  build:
+    context: .
+    dockerfile: docker/backend.Dockerfile
+  environment: &backend-env
+    AUTOML_DB_HOST: postgres
+    AUTOML_DB_PORT: "5432"
+    AUTOML_DB_USER: automl
+    AUTOML_DB_NAME: automl_compose
+    AUTOML_E2E_RUN_TOKEN: ${AUTOML_FULL_E2E_TOKEN:?run `make full-env` first (writes .env.full)}
+    POSTGRES_PASSWORD: ${AUTOML_FULL_PASSWORD:?run `make full-env` first (writes .env.full)}
+    AUTOML_API_PORT: "28100"
+    AUTOML_SERVING_PORT: "28200"
+    # the control plane reaches the serving container by its service name on the Compose network;
+    # the request still carries the loopback Host header (see src/automl_ops/serving_client.py)
+    AUTOML_SERVING_HOST: serving
+    AUTOML_UI_ORIGIN: http://localhost:25173
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    pull_policy: never
+    container_name: automl-full-postgres
+    environment:
+      POSTGRES_USER: automl
+      POSTGRES_DB: automl_compose
+      POSTGRES_PASSWORD: ${AUTOML_FULL_PASSWORD:?run `make full-env` first (writes .env.full)}
+    volumes:
+      - full_postgres_data:/var/lib/postgresql/data
+    mem_limit: 384m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U automl -d automl_compose"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-shot: brings THIS stack's own, empty database to the migration head, then exits.
+  migrate:
+    <<: *backend
+    container_name: automl-full-migrate
+    command: ["python", "scripts/db.py", "upgrade"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *backend
+    container_name: automl-full-api
+    command: ["python", "scripts/serve_control.py", "--host", "0.0.0.0"]
+    ports:
+      - "127.0.0.1:28100:28100"
+    volumes:
+      - full_data:/data
+    mem_limit: 512m
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:28100/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  worker:
+    <<: *backend
+    container_name: automl-full-worker
+    command: ["python", "scripts/worker.py"]
+    volumes:
+      - full_data:/data
+    mem_limit: 1g
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  serving:
+    image: automl-ops-serving:local
+    build:
+      context: .
+      dockerfile: docker/serving.Dockerfile
+    container_name: automl-full-serving
+    # Its own container on the Compose network (not the API's), so either one can restart alone.
+    ports:
+      - "127.0.0.1:28200:28200"
+    command: ["python", "scripts/serve_model.py", "--host", "0.0.0.0"]
+    environment:
+      <<: *backend-env
+      # Not used by the serving app (it never imports MLflow); its isolation report is derived from
+      # these settings, so they must match the control plane's.
+      AUTOML_JOBS_MLFLOW_DIR: /data/mlflow
+      AUTOML_MLFLOW_BACKEND: sqlite
+      AUTOML_STORE_DIR: /data/store
+    volumes:
+      - full_data:/data:ro
+    mem_limit: 512m
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:28200/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  ui:
+    image: automl-ops-frontend:local
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    container_name: automl-full-ui
+    ports:
+      - "127.0.0.1:25173:8080"
+    mem_limit: 64m
+    restart: unless-stopped
+
+volumes:
+  full_postgres_data:
+  full_data:

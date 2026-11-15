@@ -1,4 +1,4 @@
-.PHONY: lint test typecheck check db-up db-stop api openapi worker serve simulate e2e ui-install ui-dev ui-demo ui-check ui-e2e
+.PHONY: e2e-compose full-env full-build full-up full-down full-status lint test typecheck check db-up db-stop api openapi worker serve simulate e2e ui-install ui-dev ui-demo ui-check ui-e2e
 
 lint:
 	uv run ruff check .
@@ -66,3 +66,24 @@ ui-check:
 
 ui-e2e:
 	cd frontend && npm run e2e
+
+# Full local stack in Docker (Phase 6, compose.full.yaml): a separate Compose project from `make db-up`.
+# Local only, 127.0.0.1 only; see docs/compose.md. `full-down` keeps the volumes (and so the data).
+FULL = docker compose -f compose.full.yaml --env-file .env.full
+full-env:
+	@test ! -e .env.full || { echo ".env.full exists; not overwriting"; exit 1; }
+	@uv run python -c "import secrets,pathlib; pathlib.Path('.env.full').write_text('AUTOML_FULL_PASSWORD=' + secrets.token_urlsafe(24) + '\\nAUTOML_FULL_E2E_TOKEN=' + secrets.token_hex(16) + '\\n')"
+	@chmod 600 .env.full && echo "wrote .env.full (git-ignored)"
+full-build:
+	$(FULL) build
+full-up:
+	$(FULL) up -d --wait
+full-down:
+	$(FULL) down
+full-status:
+	$(FULL) ps
+
+# The end-to-end story against the running full stack (`make full-up`); refuses unless that stack
+# proves its identity and is empty. See docs/compose.md.
+e2e-compose:
+	uv run python scripts/e2e_compose.py abalone

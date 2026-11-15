@@ -1,6 +1,6 @@
 # Scope
 
-Draft 2 (revised after review) · Nov 13, 2026 · Quick reference derived from `project-notes/PROJECT_GUIDE.md`.
+Draft 2 (revised after review; Nov 15, 2026 edits: drift method, API/CLI-only items, D-054) · Nov 13, 2026 · Quick reference derived from `project-notes/PROJECT_GUIDE.md`.
 
 ## About this document
 A working reference, not a fixed contract. Tools, packages, versions and implementation details in
@@ -22,7 +22,8 @@ Hiring reviewers and engineers evaluating an AI/ML portfolio; the owner as a lea
 - Training several scikit-learn algorithms with editable parameters, background jobs, and
   per-algorithm progress
 - MLflow experiment tracking: runs, parameters, metrics, artifacts, history, comparison,
-  reproducibility check
+  reproducibility check (a read-only script/CLI, `scripts/datasets.py reproduce`; **no API endpoint and no
+  UI in Version 1**, owner decision)
 - Evaluation: classification and regression metrics, confusion matrix, ROC/PR and residual
   charts, comparison, best-model selection by a chosen metric (cross-validation based);
   regular runs record cross-validation results only, and a sealed test set is scored once per
@@ -30,11 +31,12 @@ Hiring reviewers and engineers evaluating an AI/ML portfolio; the owner as a lea
   jobs is an open decision; until decided, reported test results carry that limitation)
 - Model registry: versions, status (development/staging/production), promote, roll back,
   event log (PostgreSQL is authoritative for status; MLflow aliases mirror it; mismatches are
-  reported and reconciled explicitly)
+  reported and reconciled explicitly; the UI shows the mirror state, but the explicit reconcile is
+  **API and CLI only** in Version 1, owner decision)
 - Deployment of a registered version through a separate FastAPI serving app; prediction form;
   deployed-version management
-- Monitoring: prediction logging, ground-truth feedback, live performance, Evidently data and
-  prediction drift, rule-based alerts, dashboard; labelled synthetic traffic simulator
+- Monitoring: prediction logging, ground-truth feedback, live performance, numpy-based data and
+  prediction drift detection (Evidently is **not** used, owner decision D-046), rule-based alerts, dashboard; labelled synthetic traffic simulator
 - PostgreSQL with migrations, FastAPI, React (TypeScript), Docker Compose, GitHub Actions CI,
   README with screenshots and a short architecture doc
 
@@ -59,7 +61,8 @@ Hiring reviewers and engineers evaluating an AI/ML portfolio; the owner as a lea
   stream, never rows used for training, cross-validation, selection or the final test.
 
 ## Done for Version 1
-Every item above works end to end from the UI; tests and CI pass; the demo is reproducible in
+Every item above works end to end from the UI, except the two items marked API/CLI-only above (the
+reproducibility check and the MLflow-mirror reconcile); tests and CI pass; the demo is reproducible in
 three documented stages: (1) a one-time demo-data preparation script, (2) `docker compose up`,
 which starts the services only (it does not prepare data or run the workflow), and (3) an
 end-to-end script that runs the workflow against the running stack (upload → train → compare →

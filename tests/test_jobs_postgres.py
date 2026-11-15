@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import Engine, text
+from sqlalchemy.engine import URL
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from automl_ops.jobs import (
@@ -415,6 +416,41 @@ def test_only_one_worker_lock_can_be_held_and_health_can_see_it(job_env: JobEnv)
     assert worker_running(job_env.engine) is False
     second.acquire()  # free again once the holder let go
     second.release()
+
+
+def test_a_worker_on_another_database_does_not_make_this_one_look_busy(
+    job_env: JobEnv, pg_server: URL
+) -> None:
+    """Regression: `worker_running` once read `pg_locks` for the whole server, so a worker in a
+    separate demo or test database made every other database report a running worker."""
+    import secrets
+
+    from sqlalchemy import create_engine
+
+    from automl_ops.db.config import make_engine
+
+    other = f"automl_test_{secrets.token_hex(6)}"
+    admin = create_engine(pg_server.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    with admin.connect() as connection:
+        connection.execute(text(f'CREATE DATABASE "{other}"'))
+    other_engine = make_engine(pg_server.set(database=other))
+    foreign = WorkerLock(other_engine)
+    try:
+        foreign.acquire()
+        assert worker_running(other_engine) is True  # it is busy in its own database
+        assert worker_running(job_env.engine) is False  # and invisible from this one
+        own = WorkerLock(job_env.engine)
+        own.acquire()  # this database's lock is independent of the other's
+        try:
+            assert worker_running(job_env.engine) is True
+        finally:
+            own.release()
+    finally:
+        foreign.release()
+        other_engine.dispose()
+        with admin.connect() as connection:
+            connection.execute(text(f'DROP DATABASE IF EXISTS "{other}" WITH (FORCE)'))
+        admin.dispose()
 
 
 def test_recovery_marks_only_running_jobs_failed_and_only_for_the_lock_holder(

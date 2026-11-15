@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 from automl_ops.db.config import setting
 from automl_ops.ingest import DEFAULT_LIMITS, IngestLimits
+from automl_ops.serving_client import host_problem as serving_host_problem
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8100
@@ -61,6 +62,7 @@ class ApiSettings:
     mirror_retry_seconds: float = 30.0  # background retry of pending MLflow mirror work
     models_root: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "models")
     serving_port: int = DEFAULT_SERVING_PORT
+    serving_host: str = "127.0.0.1"  # a Compose service name only inside the image (Phase 6)
 
     def __post_init__(self) -> None:
         if not 1024 <= self.port <= 65535:
@@ -72,6 +74,9 @@ class ApiSettings:
             )
         if not 1024 <= self.serving_port <= 65535:
             raise SettingsError("the serving port must be between 1024 and 65535")
+        problem = serving_host_problem(self.serving_host)
+        if problem is not None:
+            raise SettingsError(problem)
         if not 1.0 <= self.mirror_retry_seconds <= 3600.0:
             raise SettingsError("mirror_retry_seconds must be between 1 and 3600")
         if self.heavy_concurrency < 1:
@@ -117,4 +122,5 @@ class ApiSettings:
             store_root=Path(store) if store else PROJECT_ROOT / "data" / "store",
             models_root=Path(models) if models else PROJECT_ROOT / "data" / "models",
             serving_port=serving_port,
+            serving_host=get("AUTOML_SERVING_HOST", "127.0.0.1") or "127.0.0.1",
         )

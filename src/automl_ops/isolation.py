@@ -30,10 +30,18 @@ from typing import Any
 
 from sqlalchemy.engine import URL
 
+from automl_ops.bind import in_container
 from automl_ops.db.config import setting
 
 TOKEN_SETTING = "AUTOML_E2E_RUN_TOKEN"
 THROWAWAY_DB_PREFIX = "automl_test_e2e_"
+# The full Compose stack (compose.full.yaml) has its own PostgreSQL server in its own volume. Its
+# database is accepted as isolated only inside the project's image (see `bind.in_container`), and
+# only when the host and port the service reports match what the Compose file declares (the script
+# compares the one-way identifiers).
+COMPOSE_DB = "automl_compose"
+COMPOSE_DB_HOST = "postgres"
+COMPOSE_DB_PORT = 5432
 PROTECTED_DATABASES = frozenset({"automl_ops", "mlflow", "postgres", "template0", "template1"})
 MIN_TOKEN_LENGTH = 16
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -124,7 +132,8 @@ def assess(wiring: Wiring) -> Isolation:
     name = wiring.database.database or ""
     token = setting(TOKEN_SETTING, None, env=env) or ""
     reasons: dict[str, str] = {}
-    if name in PROTECTED_DATABASES or not name.startswith(THROWAWAY_DB_PREFIX):
+    compose_db = name == COMPOSE_DB and in_container(env)
+    if name in PROTECTED_DATABASES or not (name.startswith(THROWAWAY_DB_PREFIX) or compose_db):
         reasons["database"] = "database_not_throwaway"
     if inside(wiring.store_root, wiring.project_data):
         reasons["store"] = "store_inside_protected_data"
@@ -170,6 +179,24 @@ def _listed(reply: Any, key: str) -> list[Any] | None:
 def _reported(body: Any) -> dict[str, Any] | None:
     block = body.get("isolation") if isinstance(body, dict) else None
     return block if isinstance(block, dict) else None
+
+
+def compose_expectation(token: str) -> Isolation:
+    """What the E2E script expects of the full Compose stack: the identifiers of the database the
+    Compose file declares and of the run token in the git-ignored `.env.full`. It is a statement
+    of identity, not a check of this machine; `verify_stack` then compares it with what both
+    services report."""
+    wiring_url = URL.create(
+        "postgresql+psycopg", host=COMPOSE_DB_HOST, port=COMPOSE_DB_PORT, database=COMPOSE_DB
+    )
+    ok = len(token) >= MIN_TOKEN_LENGTH
+    return Isolation(
+        isolated=ok,
+        checks=dict.fromkeys(CHECKS, ok),
+        reasons=[] if ok else ["run_token_missing"],
+        database_id=database_id(wiring_url),
+        run_id=run_id(token) if ok else None,
+    )
 
 
 def verify_stack(

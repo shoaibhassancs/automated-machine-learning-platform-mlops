@@ -18,21 +18,23 @@ import uvicorn
 
 from automl_ops.api_control.app import StartupError, build_app, require_current_schema
 from automl_ops.api_control.settings import ApiSettings, SettingsError
+from automl_ops.bind import host_problem
 from automl_ops.db import migrate
 from automl_ops.db.config import DatabaseConfigError, make_engine
-
-LOOPBACK = ("127.0.0.1", "::1", "localhost")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
-    parser.add_argument("--host", default="127.0.0.1", help="loopback address only")
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="loopback only (0.0.0.0 only inside the project's image)",
+    )
     parser.add_argument("--port", type=int, help="default: AUTOML_API_PORT or 8100")
     args = parser.parse_args()
-    if args.host not in LOOPBACK:
-        print(
-            f"ERROR: refusing to bind to {args.host!r}; only {', '.join(LOOPBACK)}", file=sys.stderr
-        )
+    problem = host_problem(args.host)
+    if problem is not None:
+        print(f"ERROR: {problem}", file=sys.stderr)
         return 2
     try:
         settings = ApiSettings.from_environment()

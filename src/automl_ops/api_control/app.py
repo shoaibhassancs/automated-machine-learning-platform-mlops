@@ -160,7 +160,7 @@ def build_app(settings: ApiSettings | None = None) -> FastAPI:
         registry=RegistryRepository(engine, settings.models_root),
         mirror=Mirror(engine, settings.models_root),
         deployments=DeploymentRepository(engine, settings.models_root),
-        serving=ServingClient(settings.serving_port),
+        serving=ServingClient(settings.serving_port, host=settings.serving_host),
         feedback=feedback,
         monitoring=MonitoringRepository(engine, references, feedback),
         references=references,
