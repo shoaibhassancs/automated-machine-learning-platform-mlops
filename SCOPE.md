@@ -28,7 +28,7 @@ Hiring reviewers and engineers evaluating an AI/ML portfolio; the owner as a lea
   charts, comparison, best-model selection by a chosen metric (cross-validation based);
   regular runs record cross-validation results only, and a sealed test set is scored once per
   job, for the selected model, after its configuration is frozen (reuse of the test part across
-  jobs is an open decision; until decided, reported test results carry that limitation)
+  jobs is accepted for V1, owner decision D-057: repeated jobs may produce test results and every result keeps the warning that repeated use can make the test score less independent; a test-set lock is a possible future improvement)
 - Model registry: versions, status (development/staging/production), promote, roll back,
   event log (PostgreSQL is authoritative for status; MLflow aliases mirror it; mismatches are
   reported and reconciled explicitly; the UI shows the mirror state, but the explicit reconcile is
@@ -68,3 +68,6 @@ which starts the services only (it does not prepare data or run the workflow), a
 end-to-end script that runs the workflow against the running stack (upload → train → compare →
 register → promote → deploy → predict → drift alert), or the same flow driven by hand in the UI;
 documentation states what is and is not verified.
+
+## Version 1 status
+**Approved by the owner on 2026-11-16 (D-057), with limitations recorded.** Delivered as scoped, with the two API/CLI-only items named above. Verified locally: the test suite, lint, strict types, the Compose stack and the end-to-end story on both demo datasets. GitHub Actions: owner-reported passing, tested commit unconfirmed, covering backend, frontend and a Docker boot smoke test only (not the Compose end-to-end script or the Playwright tests). Deferred limitations: base images pinned by tag not digest, no worker health check, no container hardening beyond non-root, a broad localhost CSP, no image scan, no test-set lock, no retention pruning. Not run: Linux, x86-64, Windows, out-of-memory kills, daemon restarts. Details: DECISIONS.md D-057 and docs/compose.md.

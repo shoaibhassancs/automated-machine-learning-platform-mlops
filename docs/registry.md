@@ -163,7 +163,7 @@ Registry code never reads dataset rows or re-evaluates anything. It reads only t
 modules import nothing that reads data, and that registering, promoting and reading work with every
 dataset reader and the test-part reader patched to fail. The standing limitation travels with the
 evaluation: repeated use of the test part across jobs can influence model choices; it is not
-independent or leakage-proof. The cross-job reuse policy is **still an open decision**; nothing here
+independent or leakage-proof. The cross-job reuse policy is accepted for V1 (owner decision, D-057): repeated jobs may produce test results and every result keeps the warning that repeated use can make the test score less independent; a test-set lock is a possible future improvement; nothing here
 counts or restricts it.
 
 ## Measured (this machine, one live run; D-040)

@@ -113,8 +113,7 @@ algorithm, linked with `mlflow.parentRunId` so the UI nests them).
 Undefined metrics (for example ROC-AUC when a fold lacks a class) are **skipped**, never logged as
 zero. `train --track` runs carry **no** test metrics and no package. Non-selected models never have
 test scores. The test result is logged once per package, on the selected model's run. Every logged
-test result carries the standing limitation: the same test part can be reused by other jobs (an
-**open decision**, unchanged here), repeated use can influence model choices, and the result is not
+test result carries the standing limitation: the same test part can be reused by other jobs (accepted for V1 (owner decision, D-057): repeated jobs may produce test results and every result keeps the warning that repeated use can make the test score less independent; a test-set lock is a possible future improvement), repeated use can influence model choices, and the result is not
 independent or leakage-proof. Nothing in tracking counts, warns about, or blocks that reuse.
 
 Job identity: there is no application database yet, so a job is identified by `platform.job_key`:

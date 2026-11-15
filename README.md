@@ -7,6 +7,8 @@ Local only, no authentication, not production-ready.
 
 ## Status
 
+**Version 1 approved by the owner (2026-11-16, D-057), with the limitations below recorded.**
+
 Built and verified: dataset ingestion, profiling and validation; task configuration; training, selection, one
 final test and sealed model packages; MLflow tracking; PostgreSQL database and migrations; control-plane API;
 training jobs with a worker; model registry with an optional MLflow mirror; serving app and deployments;
@@ -14,10 +16,13 @@ feedback and live performance; drift monitoring, reference samples and alerts; t
 end-to-end script; the web frontend (owner-reviewed); a full local Docker Compose stack
 ([docs/compose.md](docs/compose.md)); and CI workflow files.
 
-**Not verified, stated plainly:** the GitHub Actions workflow has never run on GitHub (it was only
-syntax-checked locally), so no CI result exists. Everything was run on one machine (Apple-silicon Mac, Docker
-Desktop); Linux, x86-64 and Windows were not run. Nothing is deployed to a hosted service and none is planned:
-"deployment" here means the serving app on 127.0.0.1. Known limits: [docs/simulator.md](docs/simulator.md#limits),
+**Verification status, stated plainly.** The full local test suite (1198 tests), lint and strict type checks were
+run on one machine (Apple-silicon Mac, Docker Desktop). The GitHub Actions run is **owner-reported as passing; the
+exact commit it tested is unconfirmed**. It covers backend lint, types and tests, frontend checks and build, and a
+Docker build and boot smoke test. It does **not** run the Compose end-to-end script (`make e2e-compose`, passed
+locally on both demo datasets) or the Playwright browser tests (local only). Not run: Linux, x86-64, Windows,
+out-of-memory kills, daemon restarts, image vulnerability scans. Nothing is deployed to a hosted service and none
+is planned: "deployment" here means the serving app on 127.0.0.1. Known limits: [docs/simulator.md](docs/simulator.md#limits),
 [docs/monitoring.md](docs/monitoring.md#limits) and the list at the end of this page.
 
 ## Architecture
@@ -58,7 +63,7 @@ Prefer no containers? The commands under "Run it" below start the same services 
 
 ## Screenshots
 
-Captured with Playwright from `make ui-demo` (a throwaway backend with seeded demo and simulated traffic; the
+The first five were captured with Playwright from `make ui-demo` (a throwaway backend with seeded demo and simulated traffic; the
 header says so), 1280 x 800, light theme. They show the real UI, not mock-ups.
 
 | Overview | Datasets |
@@ -68,6 +73,12 @@ header says so), 1280 x 800, light theme. They show the real UI, not mock-ups.
 | ![Models](docs/screenshots/models.png) | ![Deployment](docs/screenshots/deployment.png) |
 
 ![Monitoring: simulated demo traffic](docs/screenshots/monitoring.png)
+
+Two more, captured by hand by the owner from a demo stack (dark theme, the Adult dataset). The other eleven captures from that session (overview, upload, distributions, correlations, profile, validation, a running job, models, deployment, monitoring) are in [screenshots/](screenshots/) and are not embedded here:
+
+| Dataset preview (Adult, 34,190 rows) | New training job |
+| --- | --- |
+| ![Dataset preview](screenshots/adult-dataset-preview.png) | ![New training job form](screenshots/training-job-form.png) |
 
 ## Setup
 
@@ -125,8 +136,8 @@ prediction form), Monitoring (activity, live performance, drift reports, alerts,
 
 ## Things to know
 
-- The held-out test part is read once per job, for the selected model only; reuse across jobs is an **open
-  decision**, so every reported test result carries that limitation.
+- The held-out test part is read once per job, for the selected model only. Reuse across jobs is accepted for V1 (owner decision, D-057): repeated jobs may produce test results and every result keeps the warning that repeated use can make the test score less independent; a test-set lock is a possible future improvement. Every
+  reported test result carries that warning; the project never calls it independent or leakage-proof.
 - Monitoring uses numpy-only statistics (Evidently was not installed) and runs on demand. The performance
   alert scores the labels inside the same 1,000-prediction window as drift, so it recovers with the traffic.
 - **Known limitation: no retention.** Predictions, labels, monitoring reports and alerts are kept forever and
@@ -142,6 +153,6 @@ prediction form), Monitoring (activity, live performance, drift reports, alerts,
   production deployment, and no hosted deployment exists or is planned.
 - Compose stack, tested: a process exit in the API, serving or worker container is restarted by Docker and
   serving stays reachable ([docs/compose.md](docs/compose.md#limits-and-what-has-not-been-tested)). Not
-  tested: out-of-memory kills, daemon restarts, other hosts. The GitHub Actions workflow has never run.
+  tested: out-of-memory kills, daemon restarts, other hosts. CI does not run these restart checks.
 - The reproducibility check (`scripts/datasets.py reproduce`) and the MLflow-mirror reconcile
   (`scripts/registry.py reconcile`, `POST /models/{name}/reconcile`) are script/API only in Version 1, not in the UI.

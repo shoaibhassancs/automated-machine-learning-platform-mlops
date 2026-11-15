@@ -65,7 +65,7 @@ seal the package.
   (`_read_test_part`, which needs a token only the attempt-marker step can create); a test parses the
   source and fails if any other code touches them; tests record the order of events, that exactly one
   pipeline predicts after the read, and that a second attempt is refused before any test row is read.
-- **Open decision, not settled here: reuse of the test part across jobs.** The same dataset version
+- **Reuse of the test part across jobs (open when this chunk was written; accepted for V1 (owner decision, D-057): repeated jobs may produce test results and every result keeps the warning that repeated use can make the test score less independent; a test-set lock is a possible future improvement).** The same dataset version
   and seed give the same test rows in every job. Nothing in this chunk allows, forbids or counts
   that. Each package records the dataset SHA-256 and the test-row fingerprint so reuse can be
   recognised later, and every test result states: the same test part can be reused by other jobs,

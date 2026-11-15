@@ -31,8 +31,8 @@ uv run python scripts/datasets.py reproduce JOB_KEY [--tolerance X] [--json]
   test fraction **are** compared, with a plain note naming each difference, because their
   cross-validation scores then come from different splits and are not directly comparable. Differing
   parameters and library versions are listed. This note is about the validity of the comparison;
-  it says nothing about reuse of the held-out test part, which stays an **open decision** (no
-  counting, warning or blocking anywhere).
+  it says nothing about reuse of the held-out test part, which is accepted for V1 (owner decision, D-057): repeated jobs may produce test results and every result keeps the warning that repeated use can make the test score less independent; a test-set lock is a possible future improvement (no
+  counting or blocking).
 * The values come straight from the MLflow records written in Chunk 3A (tags, params, metrics and the
   `training.json`, `provenance.json`, `selection_report.json` and `test_result.json` artifacts); no
   MLflow object leaves `tracking.py`. Tests compare the output with direct MLflow client reads and

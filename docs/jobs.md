@@ -91,5 +91,5 @@ silently.
 One worker, one machine, no priorities or retries. Cancel delay is bounded by one fold, and a long
 single-fold fit cannot be interrupted. Nested library payloads in the result are passed through as
 JSON, not typed field by field. A `train` job whose tracking is `pending` has no repair command.
-Cross-job reuse of the test part is **still an open decision**; nothing here counts or restricts it.
+Cross-job reuse of the test part is accepted for V1 (owner decision, D-057): repeated jobs may produce test results and every result keeps the warning that repeated use can make the test score less independent; a test-set lock is a possible future improvement; nothing here counts or restricts it.
 Not run on Linux.

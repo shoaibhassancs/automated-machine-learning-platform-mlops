@@ -36,7 +36,7 @@ The two new read-only endpoints (`predictions`, `activity`) are described in `do
 
 - Training scores are cross-validation on the training rows; the winner is explained by the stored selection rule.
 - The **final test result** appears only for the selected model, labelled as such, with the API's own limitation text
-  (reuse of the held-out part across jobs is an open decision; never "independent" or "leakage-proof").
+  (reuse of the held-out part across jobs is accepted for V1 (D-057); never "independent" or "leakage-proof").
 - Live performance is shown beside the offline score with the note that they are different measurements, and with
   label counts; below 30 labels it says so instead of showing a number.
 - Drift is described as "a reason to look, not proof". Simulated traffic is badged everywhere and never mixed with
